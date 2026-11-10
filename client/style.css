@@ -1,0 +1,102 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f14; color: #e8edf2;
+  font-family: "Segoe UI", system-ui, sans-serif; user-select: none; }
+canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.hidden { display: none !important; }
+.atk { color: #f0a04b; } .def { color: #5db4ff; }
+
+#menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; background: radial-gradient(ellipse at center, rgba(8,12,18,.55), rgba(8,12,18,.92)); text-align: center; padding: 16px; }
+#menu h1 { margin: 0; font-size: clamp(36px, 8vw, 76px); letter-spacing: .14em; font-weight: 800; }
+#menu .tag { margin: -8px 0 10px; opacity: .7; }
+#menu label { display: flex; gap: 12px; align-items: center; justify-content: space-between; width: min(360px, 90vw); }
+#menu input:not([type=range]) { background: #141b24; border: 1px solid #2c3948; color: inherit; padding: 8px 10px; border-radius: 4px; font-size: 16px; width: 200px; }
+#menu input[type=range] { width: 200px; }
+.teams { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+.teams button { background: #17202b; border: 1px solid #334456; color: #e8edf2; padding: 12px 22px; font-size: 17px; font-weight: 600;
+  border-radius: 4px; cursor: pointer; }
+.teams button.atk { color: #f0a04b; } .teams button.def { color: #5db4ff; }
+.teams button:hover:not(:disabled) { background: #223040; }
+.teams button:disabled { opacity: .4; cursor: default; }
+#status { min-height: 1.2em; opacity: .8; margin: 4px 0; }
+.keys { max-width: 720px; font-size: 13px; line-height: 1.7; opacity: .75; }
+.keys b { color: #fff; background: #1d2835; padding: 1px 6px; border-radius: 3px; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px #000; }
+#radar { position: absolute; left: 14px; top: 14px; background: rgba(8,12,18,.6); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; }
+#top { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 26px; font-weight: 700;
+  background: rgba(8,12,18,.55); padding: 4px 18px; border-radius: 4px; }
+#top span { display: inline-block; min-width: 44px; }
+#timer { color: #fff; min-width: 90px !important; }
+#timer.bomb { color: #ff5a4d; }
+#alive { font-size: 12px; font-weight: 500; opacity: .8; letter-spacing: .05em; }
+#killfeed { position: absolute; top: 14px; right: 14px; text-align: right; font-size: 14px; }
+#killfeed div { background: rgba(8,12,18,.6); padding: 3px 8px; margin-bottom: 3px; border-radius: 3px; display: inline-block; clear: both; float: right; }
+#killfeed .w { color: #cfd6dd; margin: 0 6px; font-size: 12px; }
+#chatlog { position: absolute; left: 14px; bottom: 130px; font-size: 14px; max-width: 420px; }
+#chatlog div { background: rgba(8,12,18,.45); padding: 2px 6px; margin-top: 2px; border-radius: 3px; width: fit-content; }
+#chatbox { position: absolute; left: 14px; bottom: 96px; width: 360px; pointer-events: auto; background: rgba(8,12,18,.85);
+  border: 1px solid #456; color: #fff; padding: 6px 8px; font-size: 14px; border-radius: 3px; }
+#center { position: absolute; top: 22%; left: 0; right: 0; text-align: center; font-size: 30px; font-weight: 700; letter-spacing: .04em; }
+#hint { position: absolute; top: 62%; left: 0; right: 0; text-align: center; font-size: 16px; opacity: .9; }
+#progress { position: absolute; top: 56%; left: 50%; transform: translateX(-50%); width: 280px; height: 18px; background: rgba(8,12,18,.7);
+  border: 1px solid rgba(255,255,255,.4); border-radius: 3px; }
+#progressBar { height: 100%; background: #f0c14b; width: 0; }
+#progressLabel { position: absolute; inset: 0; text-align: center; font-size: 12px; line-height: 17px; }
+#crosshair { position: absolute; left: 50%; top: 50%; --gap: 5px; }
+#crosshair i { position: absolute; background: #3dff7a; box-shadow: 0 0 2px #000; }
+#crosshair i:nth-child(1) { width: 2px; height: 9px; left: -1px; bottom: var(--gap); }
+#crosshair i:nth-child(2) { width: 2px; height: 9px; left: -1px; top: var(--gap); }
+#crosshair i:nth-child(3) { height: 2px; width: 9px; top: -1px; right: var(--gap); }
+#crosshair i:nth-child(4) { height: 2px; width: 9px; top: -1px; left: var(--gap); }
+#hitmarker { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; opacity: 0;
+  background: linear-gradient(45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%), linear-gradient(-45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%); }
+#hitmarker.hs { filter: drop-shadow(0 0 3px #f33) sepia(1) saturate(8) hue-rotate(-30deg); }
+#scope { position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 0, transparent 38vh, #000 38.4vh); }
+#scope::before, #scope::after { content: ""; position: absolute; background: #000; }
+#scope::before { left: 0; right: 0; top: 50%; height: 1px; }
+#scope::after { top: 0; bottom: 0; left: 50%; width: 1px; }
+#vitals { position: absolute; left: 18px; bottom: 16px; font-size: 40px; font-weight: 700; }
+#vitals small, #ammo small { font-size: 14px; font-weight: 500; opacity: .75; margin: 0 18px 0 6px; }
+#hp.low { color: #ff5a4d; }
+#money { position: absolute; right: 18px; bottom: 96px; font-size: 22px; font-weight: 700; color: #8fe08a; }
+#ammo { position: absolute; right: 18px; bottom: 16px; text-align: right; font-size: 40px; font-weight: 700; }
+#ammo small { margin: 0 0 0 6px; font-size: 20px; }
+#wname { font-size: 14px; font-weight: 500; opacity: .85; }
+#carry { font-size: 13px; font-weight: 600; color: #f0c14b; min-height: 16px; }
+#spec { position: absolute; bottom: 90px; left: 0; right: 0; text-align: center; font-size: 18px; }
+#damage { position: absolute; inset: 0; opacity: 0; box-shadow: inset 0 0 140px 40px rgba(220,20,10,.85); }
+#flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+#lock { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700;
+  background: rgba(8,12,18,.55); }
+
+#wheel { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+#wheel::before { content: ""; position: absolute; width: 400px; height: 400px; left: -200px; top: -200px; border-radius: 50%;
+  background: radial-gradient(circle, transparent 58px, rgba(8,12,18,.72) 60px, rgba(8,12,18,.72) 198px, transparent 200px); }
+#wheel .seg { position: absolute; width: 120px; margin-left: -60px; margin-top: -24px; text-align: center; font-size: 13px; line-height: 1.25;
+  padding: 6px 4px; border-radius: 4px; border: 1px solid transparent; opacity: .35; }
+#wheel .seg b { display: block; font-size: 11px; letter-spacing: .08em; opacity: .7; font-weight: 600; }
+#wheel .seg.own { opacity: 1; }
+#wheel .seg.sel { background: rgba(240,193,75,.25); border-color: #f0c14b; }
+#wheel .seg.cur { color: #f0c14b; }
+#wheelDot { position: absolute; width: 8px; height: 8px; margin: -4px; border-radius: 50%; background: #fff; }
+
+#buy { position: absolute; left: 6%; top: 18%; width: min(420px, 88vw); background: rgba(8,12,18,.88); border: 1px solid #3a4b5e; border-radius: 5px;
+  padding: 14px 16px; pointer-events: auto; text-shadow: none; }
+#buy h2 { margin: 0 0 10px; font-size: 18px; letter-spacing: .06em; display: flex; justify-content: space-between; }
+#buy .row { display: flex; gap: 10px; padding: 6px 8px; border-radius: 3px; cursor: pointer; font-size: 15px; }
+#buy .row:hover { background: #1d2a38; }
+#buy .row .k { color: #f0c14b; width: 18px; font-weight: 700; }
+#buy .row .p { margin-left: auto; color: #8fe08a; }
+#buy .row.no { opacity: .4; }
+#buy .row .s { font-size: 11px; opacity: .6; align-self: center; }
+#buy .foot { margin-top: 8px; font-size: 12px; opacity: .6; }
+
+#scoreboard { position: absolute; left: 50%; top: 14%; transform: translateX(-50%); width: min(640px, 94vw); background: rgba(8,12,18,.88);
+  border: 1px solid #3a4b5e; border-radius: 5px; padding: 12px 16px; text-shadow: none; }
+#scoreboard h3 { margin: 10px 0 4px; font-size: 15px; display: flex; justify-content: space-between; }
+#scoreboard table { width: 100%; border-collapse: collapse; font-size: 14px; }
+#scoreboard td { padding: 3px 6px; } #scoreboard td:nth-child(n+2) { text-align: right; width: 70px; }
+#scoreboard tr.dead { opacity: .45; } #scoreboard tr.me { background: rgba(255,255,255,.08); }
+#scoreboard th { text-align: right; font-weight: 500; opacity: .6; font-size: 12px; padding: 0 6px; }
+@media (max-width: 700px) { #radar { width: 120px; height: 112px; } #top { font-size: 20px; } }

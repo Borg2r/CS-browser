@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["crates/sim", "crates/server", "crates/predict"]
+
+[profile.release]
+opt-level = 3
+lto = true

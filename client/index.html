@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breachpoint</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud" class="hidden">
+  <canvas id="radar" width="200" height="186"></canvas>
+  <div id="top">
+    <span id="scoreA" class="atk">0</span>
+    <span id="timer">0:00</span>
+    <span id="scoreD" class="def">0</span>
+    <div id="alive"></div>
+  </div>
+  <div id="killfeed"></div>
+  <div id="chatlog"></div>
+  <input id="chatbox" class="hidden" maxlength="120" placeholder="Say to everyone…" autocomplete="off">
+  <div id="center"></div>
+  <div id="hint"></div>
+  <div id="progress" class="hidden"><div id="progressBar"></div><span id="progressLabel"></span></div>
+  <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+  <div id="hitmarker"></div>
+  <div id="scope" class="hidden"></div>
+  <div id="vitals"><span id="hp">100</span><small>HP</small><span id="armor">0</span><small id="armorLabel">ARMOR</small></div>
+  <div id="money">$800</div>
+  <div id="ammo"><span id="clip">0</span><small id="reserve">/ 0</small><div id="wname"></div><div id="carry"></div></div>
+  <div id="spec" class="hidden"></div>
+  <div id="damage"></div>
+  <div id="flash"></div>
+  <div id="wheel" class="hidden"><div id="wheelDot"></div></div>
+  <div id="buy" class="hidden"></div>
+  <div id="scoreboard" class="hidden"></div>
+  <div id="lock" class="hidden">Click to play</div>
+</div>
+
+<div id="menu">
+  <h1>BREACHPOINT</h1>
+  <p class="tag">Online tactical shooter &middot; map: Dockyard</p>
+  <label>Name <input id="name" maxlength="16" placeholder="Player"></label>
+  <label>Mouse sensitivity <input id="sens" type="range" min="0.2" max="4" step="0.1" value="1"></label>
+  <label>Volume <input id="vol" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+  <div class="teams">
+    <button data-team="1" class="atk">Attackers</button>
+    <button data-team="0">Auto-assign</button>
+    <button data-team="2" class="def">Defenders</button>
+  </div>
+  <p id="status">Connecting…</p>
+  <div class="keys">
+    <b>WASD</b> move &middot; <b>Space</b> jump &middot; <b>C / Ctrl</b> crouch &middot; <b>Shift</b> walk &middot;
+    <b>Mouse</b> aim / fire / scope &middot; <b>R</b> reload &middot; <b>B</b> buy &middot;
+    <b>Q</b> hold: weapon wheel, tap: last weapon &middot; <b>1-5</b> / wheel: weapons &middot;
+    <b>E</b> defuse &middot; <b>G</b> drop &middot; <b>Tab</b> scores &middot; <b>T</b> chat
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
