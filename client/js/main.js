@@ -18,7 +18,7 @@ let ws, hello = null, weapons = [], myId = 0, joined = false;
 let snaps = [], latest = null, me = null, roster = new Map();
 let yaw = 0, pitch = 0, seq = 0, pending = [], pred = null, err = [0, 0, 0];
 let wasAlive = false, resetView = false, timeOffset = -Infinity;
-let punch = 0, shotsC = 0, sinceShot = 9, eyeH = 1.62, stride = 0, lastSlot = 1, prevSlot = 1;
+let punch = 0, punchYaw = 0, shotsC = 0, sinceShot = 9, eyeH = 1.62, stride = 0, lastSlot = 1, prevSlot = 1;
 let specIdx = 0, beepT = 0, chatOpen = false, sens = 1, fov = 74;
 const keys = new Set(); let mouseB = 0;
 
@@ -145,7 +145,8 @@ function onEvent(ev) {
     case 'go': hud.center('GO', 1); sfx.ui(true); break;
     case 'end': {
       const mine = roster.get(myId)?.tm;
-      hud.center(ev.over ? `${ev.w === 1 ? 'Attackers' : 'Defenders'} win the match — sides swap` : `${ev.w === 1 ? 'Attackers' : 'Defenders'} win the round`,
+      const side = ev.w === 1 ? 'Attackers' : 'Defenders';
+      hud.center(ev.draw ? 'Match drawn' : ev.over ? `${side} win the match` : ev.half ? `${side} win the round — half-time, sides swap` : `${side} win the round`,
         ev.over ? 9 : 4.5, ['', 'atk', 'def'][ev.w]);
       sfx.jingle(ev.w === mine);
       break;
@@ -300,10 +301,13 @@ function frame(tms) {
     speed = Math.hypot(pred[3], pred[5]);
     sinceShot += dt;
     if (sinceShot > Math.max(w.interval * 1.7, 0.2)) shotsC = Math.max(0, shotsC - dt * 14);
-    const target = Math.min(shotsC, 8) * w.recoil;
+    // Mirrors sim::weapons::recoil_offset so the view follows the spray pattern.
+    const target = Math.min(shotsC, 9) * w.recoil;
+    const side = shotsC > 4 ? w.recoil * 1.8 * Math.sin((shotsC - 4) * 0.5) * Math.min((shotsC - 4) / 4, 1) : 0;
     punch += (target - punch) * Math.min(1, dt * 25);
+    punchYaw += (side - punchYaw) * Math.min(1, dt * 25);
     cam.position.set(pred[0] + err[0], pred[1] + err[1] + eyeH, pred[2] + err[2]);
-    cam.rotation.set(pitch + punch, yaw, 0);
+    cam.rotation.set(pitch + punch, yaw + punchYaw, 0);
     if (pred[6] > 0.5 && speed > 3.4) { stride += speed * dt; if (stride > 2.3) { stride = 0; sfx.step(null, true); } }
     hidden = myId;
     world.setViewmodel(w.cls);
@@ -323,7 +327,8 @@ function frame(tms) {
   }
 
   const scoped = alive && me.sc && w.zoom > 0;
-  const wantFov = scoped ? 2 * Math.atan(Math.tan(37 * Math.PI / 180) / w.zoom) * 180 / Math.PI : 74;
+  const mag = scoped ? (w.zoom >= 4 ? (me.sc === 1 ? 2.25 : w.zoom + 1) : w.zoom) : 1;
+  const wantFov = 2 * Math.atan(Math.tan(37 * Math.PI / 180) / mag) * 180 / Math.PI;
   if (Math.abs(wantFov - fov) > 0.05) { fov += (wantFov - fov) * Math.min(1, dt * 18); cam.fov = fov; cam.updateProjectionMatrix(); }
 
   sfx.listener = { x: cam.position.x, y: cam.position.y, z: cam.position.z, yaw: alive ? yaw : cam.rotation.y };
@@ -331,7 +336,7 @@ function frame(tms) {
 
   if (latest.bomb && latest.ph === 1) {
     beepT -= dt;
-    if (beepT <= 0) { beepT = 0.12 + 0.9 * Math.max(0, latest.bomb[3]) / 40; sfx.beep(latest.bomb, latest.bomb[3] < 10); }
+    if (beepT <= 0) { beepT = 0.12 + 0.9 * Math.max(0, latest.bomb[3]) / 45; sfx.beep(latest.bomb, latest.bomb[3] < 10); }
   }
 
   // HUD

@@ -36,7 +36,9 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 ## Game
 
 - Map **Dockyard**: a container terminal with two sites and three lanes.
-- First team to 8 rounds wins, then sides swap.
+- 30 rounds: sides swap at half-time after 15, first team to 16 wins.
+- Fixed spray patterns, bullet penetration through thin cover, fall damage,
+  slow-down when hit, two-level sniper zoom, knife slash / stab / backstab.
 - 22 firearms (pistols, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
   knife, frag / flash / smoke grenades, armour, helmet and defuse kit.
 - Economy with kill rewards, round win / loss bonuses and a buy menu.
@@ -48,7 +50,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 |---------------------|-----------------------------------------------|
 | WASD / Space        | Move / jump                                   |
 | C or Ctrl / Shift   | Crouch / walk                                 |
-| Mouse 1 / Mouse 2   | Fire, plant / scope                           |
+| Mouse 1 / Mouse 2   | Fire, plant / scope, knife stab               |
 | R / E / G           | Reload / defuse / drop weapon                 |
 | B                   | Buy menu (number keys or click)               |
 | Q                   | Hold: weapon wheel · tap: last weapon         |

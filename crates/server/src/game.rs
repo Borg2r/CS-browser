@@ -18,10 +18,11 @@ const FREEZE_TIME: f32 = 6.0;
 const ROUND_TIME: f32 = 115.0;
 const END_TIME: f32 = 5.0;
 const MATCH_END_TIME: f32 = 10.0;
-const BUY_TIME: f32 = 20.0;
-const BOMB_TIME: f32 = 40.0;
+const BUY_TIME: f32 = 90.0;
+const BOMB_TIME: f32 = 45.0;
 const PLANT_TIME: f32 = 3.0;
-const WIN_ROUNDS: u32 = 8;
+const WIN_ROUNDS: u32 = 16;
+const HALF_ROUNDS: u32 = 15;
 const START_MONEY: u32 = 800;
 const MAX_MONEY: u32 = 16000;
 const SMOKE_RADIUS: f32 = 3.5;
@@ -134,7 +135,8 @@ pub struct Player {
     pub reload_t: f32,
     pub shots: f32,
     pub since_shot: f32,
-    pub scoped: bool,
+    /// Scope zoom level: 0 off, 1 or 2 zoomed.
+    pub scoped: u8,
     pub plant_t: f32,
     pub defuse_t: f32,
     pub flash_t: f32,
@@ -154,7 +156,7 @@ impl Player {
             yaw: 0.0, pitch: 0.0, buttons: 0, prev_buttons: 0,
             hp: 0, armor: 0, helmet: false, money: START_MONEY, kills: 0, deaths: 0,
             prim: None, sec: None, nades: [0; 3], has_bomb: false, kit: false,
-            slot: 2, cooldown: 0.0, reload_t: 0.0, shots: 0.0, since_shot: 9.0, scoped: false,
+            slot: 2, cooldown: 0.0, reload_t: 0.0, shots: 0.0, since_shot: 9.0, scoped: 0,
             plant_t: 0.0, defuse_t: 0.0, flash_t: 0.0,
             cmds: VecDeque::new(), ack: 0, budget: 0.0, interp_time: 0.0,
             hist: VecDeque::new(),
@@ -213,7 +215,7 @@ impl Player {
 
     pub fn max_speed(&self) -> f32 {
         let w = &WEAPONS[self.cur_weapon()];
-        if self.scoped && w.zoom > 0.0 { w.speed * 0.6 } else { w.speed }
+        if self.scoped > 0 && w.zoom > 0.0 { w.speed * 0.6 } else { w.speed }
     }
 
     pub fn xz(&self) -> [f32; 2] {
@@ -276,6 +278,7 @@ pub struct Game {
     pub atk_site: usize,
     /// Site where defenders have spotted the attack (bots rotate there).
     pub alert: Option<usize>,
+    swap_pending: bool,
     roster_dirty: bool,
     team_size: usize,
 }
@@ -355,6 +358,7 @@ impl Game {
             next_id: 1,
             atk_site: 0,
             alert: None,
+            swap_pending: false,
             roster_dirty: true,
             team_size,
         };
@@ -551,7 +555,7 @@ impl Game {
         p.cooldown = 0.0;
         p.reload_t = 0.0;
         p.shots = 0.0;
-        p.scoped = false;
+        p.scoped = 0;
         p.plant_t = 0.0;
         p.defuse_t = 0.0;
         p.flash_t = 0.0;
@@ -611,11 +615,17 @@ impl Game {
             let gain = if p.team == winner { 3250 } else { loss };
             p.money = (p.money + gain).min(MAX_MONEY);
         }
-        let over = self.score[wi] >= WIN_ROUNDS;
+        let total = self.score[0] + self.score[1];
+        let draw = total >= HALF_ROUNDS * 2 && self.score[0] == self.score[1];
+        let over = self.score[wi] >= WIN_ROUNDS || draw;
+        let half = !over && total == HALF_ROUNDS;
+        self.swap_pending = half;
         self.phase = if over { Phase::MatchEnd } else { Phase::End };
         self.phase_t = if over { MATCH_END_TIME } else { END_TIME };
-        self.events
-            .push(json!({"t": "end", "w": winner, "r": reason, "over": over}).to_string());
+        self.events.push(
+            json!({"t": "end", "w": winner, "r": reason, "over": over, "half": half, "draw": draw})
+                .to_string(),
+        );
         self.roster_dirty = true;
     }
 
@@ -638,7 +648,7 @@ impl Game {
         }
         p.slot = slot;
         p.reload_t = 0.0;
-        p.scoped = false;
+        p.scoped = 0;
         p.plant_t = 0.0;
         p.shots = 0.0;
         p.cooldown = p.cooldown.max(0.35);
@@ -696,7 +706,7 @@ impl Game {
                         dropped = cur.replace(Gun::new(w));
                         p.slot = s;
                         p.reload_t = 0.0;
-                        p.scoped = false;
+                        p.scoped = 0;
                         p.cooldown = 0.35;
                     }
                 }
@@ -741,7 +751,7 @@ impl Game {
         let Some(g) = gun else { return };
         p.slot = p.best_slot();
         p.reload_t = 0.0;
-        p.scoped = false;
+        p.scoped = 0;
         p.plant_t = 0.0;
         if collides(self.map, &pos, 0.5) {
             pos = self.players[i].st.pos;
@@ -835,7 +845,7 @@ impl Game {
                 self.time
             };
             (w, p.st.eye(), p.yaw, p.pitch, p.team, p.id, shots,
-             p.st.vel[0].hypot(p.st.vel[2]), p.st.ground, p.st.crouch, p.scoped, at)
+             p.st.vel[0].hypot(p.st.vel[2]), p.st.ground, p.st.crouch, p.scoped > 0 || p.bot.is_some(), at)
         };
         let def = &WEAPONS[w];
         let mv = (speed / def.speed).min(1.0);
@@ -851,14 +861,30 @@ impl Game {
         if crouch {
             spread *= 0.75;
         }
-        let climb = shots.min(8.0) * def.recoil;
+        let (side, climb) = recoil_offset(def.recoil, shots);
+        // How much solid material (metres) a round can punch through.
+        let power = match def.class {
+            C_SNIPER => 2.6,
+            C_RIFLE | C_LMG => 1.6,
+            C_SMG => 0.7,
+            C_PISTOL => 0.6,
+            _ => 0.0,
+        };
 
         let mut ends = String::new();
         for _ in 0..def.pellets {
             let r = spread * self.rng.f().sqrt();
             let phi = self.rng.f() * std::f32::consts::TAU;
-            let dir = view_dir(yaw + r * phi.cos(), (pitch + climb + r * phi.sin()).clamp(-1.56, 1.56));
-            let mut best_t = ray_world(self.map, &origin, &dir, 250.0);
+            let dir = view_dir(yaw + side + r * phi.cos(), (pitch + climb + r * phi.sin()).clamp(-1.56, 1.56));
+            let (wall_t, thick) = ray_world_hit(self.map, &origin, &dir, 250.0);
+            let mut best_t = wall_t;
+            let mut pen_mult = 1.0;
+            if let Some(th) = thick.filter(|th| *th < power && wall_t > 0.0) {
+                let exit = wall_t + th + 0.02;
+                let o2 = [origin[0] + dir[0] * exit, origin[1] + dir[1] * exit, origin[2] + dir[2] * exit];
+                best_t = exit + ray_world(self.map, &o2, &dir, 250.0);
+                pen_mult = 1.0 - 0.7 * th / power;
+            }
             let mut hit: Option<(usize, u8)> = None;
             for j in 0..self.players.len() {
                 let v = &self.players[j];
@@ -878,7 +904,8 @@ impl Game {
                 end[0], end[1], end[2], hit.is_some() as u8);
             if let Some((j, zone)) = hit {
                 let mult = [4.0, 1.0, 0.75][zone as usize];
-                let dmg = def.dmg * def.falloff.powf(best_t / 10.0) * mult;
+                let through = if best_t > wall_t { pen_mult } else { 1.0 };
+                let dmg = def.dmg * def.falloff.powf(best_t / 10.0) * mult * through;
                 self.damage(j, Some(i), dmg, w, zone);
             }
         }
@@ -888,13 +915,14 @@ impl Game {
         ));
     }
 
-    fn melee(&mut self, i: usize) {
+    /// Quick slash, or a slow heavy stab that is lethal from behind.
+    fn melee(&mut self, i: usize, stab: bool) {
         let (origin, dir, team, id) = {
             let p = &mut self.players[i];
-            p.cooldown = WEAPONS[KNIFE].interval;
+            p.cooldown = if stab { 1.0 } else { 0.4 };
             (p.st.eye(), view_dir(p.yaw, p.pitch), p.team, p.id)
         };
-        let reach = ray_world(self.map, &origin, &dir, 2.2);
+        let reach = ray_world(self.map, &origin, &dir, if stab { 1.8 } else { 2.2 });
         let mut best: Option<(usize, f32)> = None;
         for (j, v) in self.players.iter().enumerate() {
             if !v.alive || v.team == team {
@@ -909,7 +937,10 @@ impl Game {
         }
         self.events.push(format!("{{\"t\":\"swing\",\"id\":{},\"hit\":{}}}", id, best.is_some()));
         if let Some((j, _)) = best {
-            self.damage(j, Some(i), WEAPONS[KNIFE].dmg, KNIFE, 1);
+            let facing = view_dir(self.players[j].yaw, 0.0);
+            let behind = facing[0] * dir[0] + facing[2] * dir[2] > 0.5;
+            let dmg = if !stab { 25.0 } else if behind { 195.0 } else { 65.0 };
+            self.damage(j, Some(i), dmg, KNIFE, 1);
         }
     }
 
@@ -938,6 +969,9 @@ impl Game {
         if let Some(a) = attacker {
             if a != j {
                 let aid = self.players[a].id;
+                // Getting hit slows you down.
+                self.players[j].st.vel[0] *= 0.5;
+                self.players[j].st.vel[2] *= 0.5;
                 if let Some(b) = self.players[j].bot.as_mut() {
                     b.alarm(aid);
                 }
@@ -958,7 +992,7 @@ impl Game {
             v.deaths += 1;
             v.plant_t = 0.0;
             v.defuse_t = 0.0;
-            v.scoped = false;
+            v.scoped = 0;
             let bomb = std::mem::take(&mut v.has_bomb);
             (v.st.pos, v.id, v.prim.take(), bomb)
         };
@@ -1121,14 +1155,14 @@ impl Game {
         enum Act {
             None,
             Shoot,
-            Melee,
+            Melee(bool),
             Throw(usize),
         }
         let mut act = Act::None;
         match def.class {
             C_KNIFE => {
-                if fire && p.cooldown <= 0.0 {
-                    act = Act::Melee;
+                if p.cooldown <= 0.0 && (fire || p.buttons & B_FIRE2 != 0) {
+                    act = Act::Melee(!fire);
                 }
             }
             C_FRAG | C_FLASH | C_SMOKE => {
@@ -1171,20 +1205,20 @@ impl Game {
                 } else if let Some(g) = p.gun().copied() {
                     if (reload || g.ammo == 0) && g.ammo < def.mag && g.reserve > 0 && p.cooldown <= 0.0 {
                         p.reload_t = def.reload;
-                        p.scoped = false;
+                        p.scoped = 0;
                         p.shots = 0.0;
                         self.events.push(format!("{{\"t\":\"reload\",\"id\":{}}}", p.id));
                     } else if ((def.auto && fire) || pressed) && p.cooldown <= 0.0 && g.ammo > 0 {
                         act = Act::Shoot;
                     } else if zoom && fire2 {
-                        p.scoped = !p.scoped;
+                        p.scoped = (p.scoped + 1) % if def.zoom >= 4.0 { 3 } else { 2 };
                     }
                 }
             }
         }
         match act {
             Act::Shoot => self.shoot(i),
-            Act::Melee => self.melee(i),
+            Act::Melee(stab) => self.melee(i, stab),
             Act::Throw(k) => self.throw(i, k),
             Act::None => {}
         }
@@ -1203,6 +1237,10 @@ impl Game {
         let frozen = matches!(self.phase, Phase::Freeze | Phase::MatchEnd);
         const FREEZE_MASK: u32 = !(B_FWD | B_BACK | B_LEFT | B_RIGHT | B_JUMP);
 
+        let mut falls: Vec<(usize, f32)> = Vec::new();
+        let landed = |before: (bool, f32), st: &PState| {
+            (!before.0 && st.ground && before.1 < -13.0).then(|| (-before.1 - 13.0) * 7.0)
+        };
         for i in 0..self.players.len() {
             if self.players[i].bot.is_some() {
                 bot::think(self, i, dt);
@@ -1211,7 +1249,9 @@ impl Game {
                     let held = frozen || p.plant_t > 0.0 || p.defuse_t > 0.0;
                     let b = if held { p.buttons & FREEZE_MASK } else { p.buttons };
                     let sp = p.max_speed();
+                    let before = (p.st.ground, p.st.vel[1]);
                     step(self.map, &mut p.st, b, p.yaw, dt, sp);
+                    falls.extend(landed(before, &p.st).map(|d| (i, d)));
                 }
             } else {
                 let map = self.map;
@@ -1230,10 +1270,15 @@ impl Game {
                         let held = frozen || p.plant_t > 0.0 || p.defuse_t > 0.0;
                         let b = if held { c.buttons & FREEZE_MASK } else { c.buttons };
                         let sp = p.max_speed();
+                        let before = (p.st.ground, p.st.vel[1]);
                         step(map, &mut p.st, b, p.yaw, d, sp);
+                        falls.extend(landed(before, &p.st).map(|d| (i, d)));
                     }
                 }
             }
+        }
+        for (i, d) in falls {
+            self.damage(i, None, d, KNIFE, 2);
         }
 
         if !frozen {
@@ -1297,6 +1342,16 @@ impl Game {
             }
             Phase::End => {
                 if self.phase_t <= 0.0 {
+                    if std::mem::take(&mut self.swap_pending) {
+                        // Half-time: sides swap, scores follow the players, economy resets.
+                        self.score.swap(0, 1);
+                        self.loss_streak = [0; 2];
+                        for p in &mut self.players {
+                            p.team = 3 - p.team;
+                            p.money = START_MONEY;
+                            p.alive = false;
+                        }
+                    }
                     self.start_round();
                 }
             }
@@ -1400,7 +1455,7 @@ impl Game {
         for (k, p) in self.players.iter().enumerate() {
             let flags = p.st.crouch as u8
                 | (p.has_bomb as u8) << 1
-                | (p.scoped as u8) << 2
+                | ((p.scoped > 0) as u8) << 2
                 | ((p.defuse_t > 0.0) as u8) << 3
                 | ((p.plant_t > 0.0) as u8) << 4;
             let _ = write!(c, "{}[{},{},{},{:.2},{:.2},{:.2},{:.3},{:.3},{},{},{}]",
@@ -1448,5 +1503,43 @@ impl Game {
             }
             self.send(*conn, s);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn play_round(g: &mut Game, winner: u8) {
+        g.phase = Phase::Live;
+        g.end_round(winner, "time");
+        g.phase_t = 0.0;
+        g.update_phase(0.0);
+    }
+
+    #[test]
+    fn half_time_swaps_sides_and_sixteen_wins() {
+        let mut g = Game::new();
+        let (id, team) = (g.players[0].id, g.players[0].team);
+        for _ in 0..15 {
+            play_round(&mut g, ATK);
+        }
+        let i = g.idx(id).unwrap();
+        assert_eq!(g.players[i].team, 3 - team, "sides swap after round 15");
+        assert_eq!(g.score, [0, 15], "score follows the players");
+        assert_eq!(g.players[i].money, START_MONEY);
+        assert!(g.phase == Phase::Freeze);
+        g.phase = Phase::Live;
+        g.end_round(DEF, "time");
+        assert!(g.phase == Phase::MatchEnd && g.score == [0, 16]);
+    }
+
+    #[test]
+    fn spray_pattern_climbs_then_sways() {
+        let (s0, u0) = recoil_offset(0.01, 0.0);
+        let (s3, u3) = recoil_offset(0.01, 3.0);
+        let (s8, u8_) = recoil_offset(0.01, 8.0);
+        assert_eq!((s0, u0, s3), (0.0, 0.0, 0.0));
+        assert!(u3 > 0.0 && u8_ > u3 && s8.abs() > 0.0);
     }
 }

@@ -125,3 +125,15 @@ pub fn slot_of(class: u8) -> u8 {
         _ => 0,
     }
 }
+
+/// Fixed spray pattern: (sideways, upward) aim offset in radians for the
+/// n-th consecutive shot. The client mirrors this to move the view.
+pub fn recoil_offset(recoil: f32, shots: f32) -> (f32, f32) {
+    let up = shots.min(9.0) * recoil;
+    let side = if shots > 4.0 {
+        recoil * 1.8 * ((shots - 4.0) * 0.5).sin() * ((shots - 4.0) / 4.0).min(1.0)
+    } else {
+        0.0
+    };
+    (side, up)
+}

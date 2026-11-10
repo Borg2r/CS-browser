@@ -200,6 +200,11 @@ pub fn step(map: &Map, s: &mut PState, buttons: u32, yaw: f32, dt: f32, max_spee
 
 /// Ray vs box; returns entry distance (0 if the origin is inside).
 pub fn ray_aabb(o: &V3, d: &V3, min: &V3, max: &V3) -> Option<f32> {
+    ray_aabb_span(o, d, min, max).map(|s| s.0)
+}
+
+/// Ray vs box; returns (entry, exit) distances.
+pub fn ray_aabb_span(o: &V3, d: &V3, min: &V3, max: &V3) -> Option<(f32, f32)> {
     let mut t0 = 0.0f32;
     let mut t1 = f32::MAX;
     for a in 0..3 {
@@ -220,7 +225,20 @@ pub fn ray_aabb(o: &V3, d: &V3, min: &V3, max: &V3) -> Option<f32> {
             }
         }
     }
-    Some(t0)
+    Some((t0, t1))
+}
+
+/// First world surface along a ray: (distance, thickness of the box that was hit).
+pub fn ray_world_hit(map: &Map, o: &V3, d: &V3, max_t: f32) -> (f32, Option<f32>) {
+    let mut best = (max_t, None);
+    for b in &map.boxes {
+        if let Some((t0, t1)) = ray_aabb_span(o, d, &b.min, &b.max) {
+            if t0 < best.0 {
+                best = (t0, Some(t1 - t0));
+            }
+        }
+    }
+    best
 }
 
 pub fn ray_sphere(o: &V3, d: &V3, c: &V3, r: f32) -> Option<f32> {
