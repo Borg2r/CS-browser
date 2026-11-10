@@ -578,7 +578,13 @@ impl Game {
             // Stride 5 is coprime with both spawn counts, so nobody stacks.
             self.spawn(i, offset + count[t] * 5);
             count[t] += 1;
-            let site = if self.players[i].team == ATK { self.atk_site } else { count[t] % 2 };
+            let site = if self.players[i].team == DEF {
+                count[t] % 2
+            } else if self.rng.f() < 0.2 {
+                1 - self.atk_site
+            } else {
+                self.atk_site
+            };
             if let Some(b) = self.players[i].bot.as_mut() {
                 b.reset(site);
             }

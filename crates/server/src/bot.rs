@@ -209,7 +209,8 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
 
     // ---- objective
     let planted = g.planted.as_ref().map(|b| b.pos);
-    let site = &g.map.sites[if team == ATK { g.atk_site } else { bot.site }];
+    // The carrier always goes to the chosen site; some attackers lurk at the other.
+    let site = &g.map.sites[if team == ATK && has_bomb { g.atk_site } else { bot.site }];
     let nav = &g.nav;
     let mut r1 = sim_rng(g.rng.next());
     if team == ATK {
