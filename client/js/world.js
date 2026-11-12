@@ -1,8 +1,10 @@
 // Rendering: map geometry, player models, first-person weapon and effects.
 import * as THREE from '../vendor/three.module.min.js';
+import { gunModel, handModel, weaponInfo } from './models.js';
+import { playerModel } from './characters.js';
+import { buildDesert } from './desert.js';
 
-const ATK_COL = 0xc9772e, DEF_COL = 0x2f6fb5;
-const CONTAINER_COLS = [0xb5482e, 0x2f6fa8, 0x3e8a57, 0xd0a030, 0xc76a2a, 0x2e8f96];
+const TIMBER_COLS = [0xb39770, 0x89775b, 0xb09b78, 0xb8a580, 0x9a8061, 0xc2a77b];
 
 function canvasTex(size, draw, repeat = true) {
   const c = document.createElement('canvas'); c.width = c.height = size;
@@ -20,35 +22,55 @@ function speckle(g, s, n, lo, hi, a = 0.25) {
   }
 }
 const TEX = {
-  ground: () => canvasTex(256, (g, s) => {
-    g.fillStyle = '#6d6f6c'; g.fillRect(0, 0, s, s); speckle(g, s, 5000, 60, 150);
-    g.strokeStyle = 'rgba(40,40,40,.5)'; g.lineWidth = 2; g.strokeRect(0, 0, s, s);
-  }),
-  wall: () => canvasTex(256, (g, s) => {
-    g.fillStyle = '#9a9588'; g.fillRect(0, 0, s, s);
-    for (let x = 0; x < s; x += 32) { g.fillStyle = 'rgba(0,0,0,.10)'; g.fillRect(x, 0, 3, s); g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(x + 3, 0, 3, s); }
-    speckle(g, s, 3000, 80, 190, 0.18);
-    g.fillStyle = 'rgba(60,45,30,.25)'; g.fillRect(0, s - 26, s, 26);
-  }),
-  container: () => canvasTex(128, (g, s) => {
-    g.fillStyle = '#e6e6e6'; g.fillRect(0, 0, s, s);
-    for (let x = 0; x < s; x += 16) {
-      const gr = g.createLinearGradient(x, 0, x + 16, 0);
-      gr.addColorStop(0, 'rgba(0,0,0,.28)'); gr.addColorStop(0.5, 'rgba(255,255,255,.12)'); gr.addColorStop(1, 'rgba(0,0,0,.28)');
-      g.fillStyle = gr; g.fillRect(x, 0, 16, s);
+  ground: () => canvasTex(512, (g, s) => {
+    g.fillStyle = '#c9b88c'; g.fillRect(0, 0, s, s);
+    for (let row = 0; row < 8; row++) for (let col = -1; col < 8; col++) {
+      const x = col * 80 + (row % 2) * 40, y = row * 64;
+      g.fillStyle = ['#cbbd98', '#d5c7a2', '#c1b28e', '#c9bb97'][(row * 13 + col + 16) % 4];
+      g.fillRect(x + 1, y + 1, 78, 62);
+      g.strokeStyle = 'rgba(102,88,63,.16)'; g.strokeRect(x + 1, y + 1, 78, 62);
     }
-    speckle(g, s, 500, 60, 120, 0.2);
+    speckle(g, s, 9000, 140, 225, .15);
+    for (let i = 0; i < 16; i++) {
+      const x = (i * 97) % s, y = (i * 173) % s;
+      const dust = g.createRadialGradient(x, y, 3, x, y, 110); dust.addColorStop(0, 'rgba(222,199,149,.5)'); dust.addColorStop(1, 'rgba(222,199,149,0)');
+      g.fillStyle = dust; g.fillRect(x - 110, y - 110, 220, 220);
+    }
   }),
-  crate: () => canvasTex(128, (g, s) => {
-    g.fillStyle = '#a57c48'; g.fillRect(0, 0, s, s);
-    for (let y = 0; y < s; y += 21) { g.fillStyle = 'rgba(50,30,10,.35)'; g.fillRect(0, y, s, 2); }
-    speckle(g, s, 900, 60, 140, 0.2);
-    g.strokeStyle = '#6e4d26'; g.lineWidth = 12; g.strokeRect(6, 6, s - 12, s - 12);
-    g.beginPath(); g.moveTo(8, 8); g.lineTo(s - 8, s - 8); g.stroke();
+  wall: () => canvasTex(512, (g, s) => {
+    g.fillStyle = '#d1c4ab'; g.fillRect(0, 0, s, s); speckle(g, s, 16000, 130, 235, .13);
+    for (let i = 0; i < 30; i++) {
+      const x = (i * 113) % s, y = (i * 67) % s;
+      g.fillStyle = 'rgba(129,105,74,.13)'; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 9, y - 3); g.lineTo(x + 19, y + 12); g.lineTo(x + 6, y + 14); g.fill();
+    }
+    for (let row = 0; row < 2; row++) for (let col = -1; col < 7; col++) {
+      g.fillStyle = ['#9e927b', '#afa18a', '#a69a81'][(row + col + 9) % 3];
+      g.fillRect(col * 90 + row * 45 + 2, s - 74 + row * 37, 87, 34);
+    }
+    const stain = g.createLinearGradient(0, s - 110, 0, s); stain.addColorStop(0, 'rgba(88,69,44,0)'); stain.addColorStop(1, 'rgba(88,69,44,.15)'); g.fillStyle = stain; g.fillRect(0, s - 110, s, 110);
   }),
-  barrier: () => canvasTex(128, (g, s) => {
-    g.fillStyle = '#b9b6ad'; g.fillRect(0, 0, s, s); speckle(g, s, 1500, 90, 200, 0.2);
-    for (let x = -s; x < s; x += 32) { g.fillStyle = '#d9a514'; g.beginPath(); g.moveTo(x, 20); g.lineTo(x + 16, 20); g.lineTo(x + 36, 0); g.lineTo(x + 20, 0); g.fill(); }
+  container: () => canvasTex(256, (g, s) => {
+    g.fillStyle = '#b6a37d'; g.fillRect(0, 0, s, s);
+    for (let x = 0; x < s; x += 32) {
+      g.fillStyle = 'rgba(48,33,22,.45)'; g.fillRect(x, 0, 3, s);
+      for (let i = 0; i < 8; i++) { g.strokeStyle = `rgba(59,37,22,${.025 + i * .008})`; g.beginPath(); g.moveTo(x + 4 + i * 3, 0); g.bezierCurveTo(x + i * 3 - 6, 100, x + i * 3 + 10, 180, x + i * 3 + 5, s); g.stroke(); }
+    }
+    for (const y of [34, 204]) { g.fillStyle = '#44463e'; g.fillRect(0, y, s, 13); for (let x = 12; x < s; x += 32) { g.fillStyle = '#9b9782'; g.beginPath(); g.arc(x, y + 6, 3, 0, Math.PI * 2); g.fill(); } }
+    speckle(g, s, 1500, 70, 180, .18);
+  }),
+  crate: () => canvasTex(256, (g, s) => {
+    g.fillStyle = '#a58c5f'; g.fillRect(0, 0, s, s);
+    for (let y = 0; y < s; y += 42) { g.fillStyle = 'rgba(49,34,16,.35)'; g.fillRect(0, y, s, 3); }
+    speckle(g, s, 3500, 60, 180, .17);
+    g.strokeStyle = '#6c593e'; g.lineWidth = 14; g.strokeRect(8, 8, s - 16, s - 16);
+    g.beginPath(); g.moveTo(14, 14); g.lineTo(s - 14, s - 14); g.stroke();
+    g.fillStyle = '#d3cba9'; g.fillRect(115, 40, 98, 58); g.fillStyle = '#5e573e'; g.font = 'bold 18px monospace'; g.fillText('SIROCCO', 120, 64); g.font = '12px monospace'; g.fillText('CARGO 047', 123, 84);
+    for (const x of [9, s - 9]) for (const y of [9, s - 9]) { g.fillStyle = '#33362d'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
+  }),
+  barrier: () => canvasTex(256, (g, s) => {
+    g.fillStyle = '#c7bda5'; g.fillRect(0, 0, s, s); speckle(g, s, 5000, 110, 220, .23);
+    g.strokeStyle = 'rgba(91,76,55,.3)'; g.lineWidth = 2;
+    for (let row = 0; row < 4; row++) for (let col = -1; col < 4; col++) g.strokeRect(col * 80 + row % 2 * 40, row * 64, 80, 64);
   }),
 };
 
@@ -58,82 +80,50 @@ function box(w, h, d, color, x = 0, y = 0, z = 0) {
   return m;
 }
 
-// Simple block-built guns, pointing down -Z.
-function gunModel(cls) {
-  const g = new THREE.Group(), metal = 0x23262b, dark = 0x15171a, wood = 0x6b4a2a;
-  const add = (...a) => g.add(box(...a));
-  switch (cls) {
-    case 0: add(0.02, 0.05, 0.26, 0xcfd6dd, 0, 0.02, -0.2); add(0.035, 0.06, 0.12, dark, 0, 0, 0); break;
-    case 1: add(0.045, 0.06, 0.24, metal, 0, 0.03, -0.1); add(0.04, 0.13, 0.06, dark, 0, -0.05, 0); break;
-    case 2: add(0.06, 0.07, 0.75, metal, 0, 0.02, -0.3); add(0.065, 0.06, 0.25, wood, 0, -0.03, -0.38); add(0.055, 0.1, 0.25, wood, 0, -0.01, 0.15); break;
-    case 3: add(0.06, 0.09, 0.4, metal, 0, 0.02, -0.15); add(0.04, 0.2, 0.05, dark, 0, -0.1, -0.12); add(0.04, 0.11, 0.05, dark, 0, -0.06, 0.03); add(0.03, 0.03, 0.14, dark, 0, 0.03, -0.42); break;
-    case 5: add(0.06, 0.08, 0.7, 0x2f3b2c, 0, 0.02, -0.25); add(0.03, 0.03, 0.45, dark, 0, 0.03, -0.8); add(0.05, 0.05, 0.3, dark, 0, 0.1, -0.2); add(0.055, 0.11, 0.3, 0x2f3b2c, 0, -0.01, 0.2); break;
-    case 6: add(0.08, 0.11, 0.6, metal, 0, 0.02, -0.2); add(0.03, 0.03, 0.4, dark, 0, 0.03, -0.7); add(0.12, 0.13, 0.14, 0x39402f, 0, -0.1, -0.2); add(0.055, 0.1, 0.25, dark, 0, 0, 0.2); break;
-    case 7: case 8: case 9: {
-      const col = cls === 7 ? 0x3d5a34 : cls === 8 ? 0xd8dde2 : 0x6c7780;
-      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 10), new THREE.MeshLambertMaterial({ color: col }));
-      s.position.set(0, 0.02, -0.12); g.add(s); add(0.03, 0.03, 0.03, dark, 0, 0.09, -0.12); break;
-    }
-    case 10: add(0.24, 0.1, 0.16, 0x4a3d2a, 0, 0, -0.15); add(0.1, 0.02, 0.07, 0x122b16, 0.04, 0.06, -0.15); add(0.02, 0.025, 0.02, 0xff2a1a, -0.08, 0.06, -0.15); break;
-    default: add(0.055, 0.08, 0.55, metal, 0, 0.02, -0.2); add(0.03, 0.03, 0.3, dark, 0, 0.03, -0.6); add(0.04, 0.2, 0.07, dark, 0, -0.1, -0.18); add(0.05, 0.1, 0.25, wood, 0, 0, 0.18); add(0.04, 0.11, 0.05, dark, 0, -0.07, 0.02);
-  }
-  return g;
-}
-
-function playerModel(team) {
-  const col = team === 1 ? ATK_COL : DEF_COL, dark = team === 1 ? 0x4a3524 : 0x1c2c40;
-  const root = new THREE.Group(), body = new THREE.Group();
-  root.add(body);
-  const legL = new THREE.Group(), legR = new THREE.Group();
-  legL.add(box(0.2, 0.85, 0.22, dark, 0, -0.42, 0)); legR.add(box(0.2, 0.85, 0.22, dark, 0, -0.42, 0));
-  legL.position.set(-0.13, 0.85, 0); legR.position.set(0.13, 0.85, 0);
-  const torso = new THREE.Group(); torso.position.y = 0.85;
-  torso.add(box(0.52, 0.6, 0.28, col, 0, 0.3, 0));
-  torso.add(box(0.44, 0.34, 0.32, dark, 0, 0.36, 0));
-  const head = box(0.26, 0.27, 0.26, 0xd9a47a, 0, 0.76, 0);
-  torso.add(head); torso.add(box(0.29, 0.13, 0.29, col, 0, 0.87, 0));
-  const arms = new THREE.Group(); arms.position.set(0, 0.5, 0);
-  arms.add(box(0.13, 0.13, 0.5, col, 0.27, 0, -0.22)); arms.add(box(0.13, 0.13, 0.5, col, -0.2, 0, -0.26));
-  const gunSlot = new THREE.Group(); gunSlot.position.set(0.14, 0, -0.5); arms.add(gunSlot);
-  torso.add(arms);
-  const pack = box(0.3, 0.3, 0.14, 0x4a3d2a, 0, 0.32, 0.2); pack.visible = false; torso.add(pack);
-  body.add(legL, legR, torso);
-  return { root, body, legL, legR, torso, arms, gunSlot, pack, phase: 0, weapon: -1, deadT: 0, last: null };
-}
-
 export class World {
   constructor(canvas) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.autoClear = false;
+    this.renderer.info.autoReset = false;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x9fc3e0);
-    this.scene.fog = new THREE.Fog(0xb7cfe0, 60, 190);
+    this.scene.background = new THREE.Color(0xb8d4d7);
+    this.scene.fog = new THREE.Fog(0xd6c3a0, 78, 230);
     this.camera = new THREE.PerspectiveCamera(74, 1, 0.05, 400);
     this.camera.rotation.order = 'YXZ';
-    this.scene.add(new THREE.HemisphereLight(0xdfeeff, 0x6b6558, 1.5));
-    const sun = new THREE.DirectionalLight(0xfff0d8, 2.2);
-    sun.position.set(-45, 80, 35); sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
+    this.scene.add(new THREE.HemisphereLight(0xdbeef2, 0x887050, 1.7));
+    const sun = new THREE.DirectionalLight(0xffedcc, 3.0);
+    sun.position.set(-42, 65, 26); sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 10, far: 220 });
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
     this.scene.add(sun);
 
     // First-person weapon is drawn in its own pass so it never clips into walls.
     this.vmScene = new THREE.Scene();
-    this.vmScene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 2.2));
+    this.vmScene.add(new THREE.HemisphereLight(0xf2f7ff, 0x6c6049, 2.2));
+    const vmKey = new THREE.DirectionalLight(0xffefd0, 3.4); vmKey.position.set(-2, 3, 2); this.vmScene.add(vmKey);
+    const vmRim = new THREE.DirectionalLight(0xc3e4f0, 1.6); vmRim.position.set(3, 1, -2); this.vmScene.add(vmRim);
     this.vmCamera = new THREE.PerspectiveCamera(58, 1, 0.01, 10);
     this.vm = new THREE.Group(); this.vmScene.add(this.vm);
-    this.vmCls = -1; this.vmKick = 0; this.vmSwitch = 0; this.vmBob = 0;
+    this.vmCls = -1; this.vmWeapon = null; this.vmKick = 0; this.vmSwitch = 0; this.vmBob = 0; this.vmAim = 0;
+    this.vmHands = [new THREE.Group(), new THREE.Group()];
+    this.vm.add(...this.vmHands);
+    this.handKick = [0, 0]; this.flashTimers = [0, 0];
+    this.vmReload = 0; this.vmTime = 0;
     this.muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22),
       new THREE.MeshBasicMaterial({ map: canvasTex(64, (g, s) => {
         const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
         r.addColorStop(0, '#fff'); r.addColorStop(0.3, '#ffd76a'); r.addColorStop(1, 'rgba(255,120,0,0)');
         g.fillStyle = r; g.fillRect(0, 0, s, s);
       }, false), transparent: true, depthTest: false, blending: THREE.AdditiveBlending }));
-    this.muzzle.visible = false; this.vmScene.add(this.muzzle);
+    this.muzzle.visible = false;
+    this.muzzles = [this.muzzle.clone(), this.muzzle];
+    this.muzzles.forEach((flash, hand) => { flash.name = `muzzle-${hand}`; this.vmHands[hand].add(flash); });
 
     this.players = new Map();
     this.items = new Map();
@@ -163,13 +153,13 @@ export class World {
 
   buildMap(map) {
     const mats = ['ground', 'wall', 'container', 'crate', 'barrier'];
-    const tile = [4, 4, 2.6, 1, 2];
+    const tile = [5, 5, 3.4, 1.5, 2];
     const buf = mats.map(() => ({ p: [], n: [], u: [], c: [], i: [] }));
     const col = new THREE.Color();
     for (const b of map.boxes) {
       const [x0, y0, z0, x1, y1, z1, mat, v] = b, o = buf[mat], t = tile[mat];
-      col.set(mat === 2 ? CONTAINER_COLS[v % 6] : 0xffffff);
-      if (mat === 1) col.setScalar(0.9 + (v % 3) * 0.05);
+      col.set(mat === 2 ? TIMBER_COLS[v % 6] : 0xffffff);
+      if (mat === 1) col.set([0xf0d9b0, 0xe7c99b, 0xd4b98b, 0xf2e2c4, 0xe5ceaa, 0xd5c3a0][v % 6]);
       const face = (vs, n, uv) => {
         const base = o.p.length / 3;
         vs.forEach((p, k) => { o.p.push(...p); o.n.push(...n); o.u.push(uv[k][0] / t, uv[k][1] / t); o.c.push(col.r, col.g, col.b); });
@@ -177,6 +167,7 @@ export class World {
       };
       face([[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], [0, 1, 0], [[x0, -z1], [x1, -z1], [x1, -z0], [x0, -z0]]);
       if (mat === 0) continue;
+      if (y0 > 2.5) face([[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], [0, -1, 0], [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]);
       const side = (a, b2, n) => face([[a[0], y0, a[1]], [b2[0], y0, b2[1]], [b2[0], y1, b2[1]], [a[0], y1, a[1]]], n,
         [[a[0] + a[1], y0], [b2[0] + b2[1], y0], [b2[0] + b2[1], y1], [a[0] + a[1], y1]]);
       side([x0, z1], [x1, z1], [0, 0, 1]); side([x1, z0], [x0, z0], [0, 0, -1]);
@@ -189,7 +180,7 @@ export class World {
       g.setAttribute('uv', new THREE.Float32BufferAttribute(o.u, 2));
       g.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
       g.setIndex(o.i);
-      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: TEX[mats[k]](), vertexColors: true, side: THREE.DoubleSide }));
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: TEX[mats[k]](), vertexColors: true, roughness: .95, side: THREE.DoubleSide }));
       m.receiveShadow = true; m.castShadow = k !== 0;
       this.scene.add(m);
     });
@@ -204,10 +195,12 @@ export class World {
       m.rotation.x = -Math.PI / 2; m.position.set((s[0] + s[2]) / 2, 0.02, (s[1] + s[3]) / 2);
       this.scene.add(m);
     });
+    buildDesert(this.scene, map);
   }
 
   // ---- other players
-  setPlayer(id, s, weaponCls, dt, hidden) {
+  setPlayer(id, s, weapon, dt, hidden) {
+    const w = weaponInfo(weapon);
     let m = this.players.get(id);
     if (!m || m.team !== s.team) {
       if (m) this.scene.remove(m.root);
@@ -234,9 +227,15 @@ export class World {
     const sw = Math.sin(m.phase) * Math.min(1, speed / 3) * 0.7;
     m.legL.rotation.x = sw; m.legR.rotation.x = -sw;
     m.arms.rotation.x = s.pitch * 0.9;
+    m.torso.rotation.z = Math.sin(m.phase) * Math.min(speed, 6) * .003;
+    if (m.kneeL) m.kneeL.rotation.x = Math.max(0, -sw) * .45;
+    if (m.kneeR) m.kneeR.rotation.x = Math.max(0, sw) * .45;
     m.pack.visible = !!(s.flags & 2);
-    if (m.weapon !== weaponCls) {
-      m.weapon = weaponCls; m.gunSlot.clear(); m.gunSlot.add(gunModel(weaponCls));
+    if (m.weapon !== w.id) {
+      m.weapon = w.id; m.gunSlot.clear(); m.gunSlot.add(gunModel(w));
+      if (m.gunSlotL) { m.gunSlotL.clear(); if (w.dual) m.gunSlotL.add(gunModel(w)); }
+      if (m.leftArm) m.leftArm.visible = !w.dual;
+      if (m.leftArmDual) m.leftArmDual.visible = !!w.dual;
     }
     // Report a footstep when the stride crosses a half cycle at running speed.
     return speed > 3.4 && Math.floor(prev / Math.PI) !== Math.floor(m.phase / Math.PI) ? 1 : 0;
@@ -260,12 +259,12 @@ export class World {
   }
   setItems(list, weapons) {
     this.syncSimple(this.items, list, e => {
-      const g = gunModel(weapons[e[1]].cls); g.rotation.z = Math.PI / 2; g.scale.setScalar(1.3);
+      const g = gunModel(weapons[e[1]]); g.rotation.z = Math.PI / 2; g.scale.setScalar(1.3);
       const h = new THREE.Group(); g.position.y = 0.06; h.add(g); return h;
     });
   }
   setNades(list, weapons) {
-    this.syncSimple(this.nades, list, e => gunModel(weapons[e[1]].cls));
+    this.syncSimple(this.nades, list, e => gunModel(weapons[e[1]]));
   }
   setSmokes(list) {
     while (this.smokes.length > list.length) this.scene.remove(this.smokes.pop());
@@ -309,13 +308,28 @@ export class World {
     l.position.set(p[0], p[1] + 1, p[2]); this.scene.add(l); this.fx.push({ o: l, t: 0.25 });
   }
 
-  setViewmodel(cls) {
-    if (cls === this.vmCls) return;
-    this.vmCls = cls; this.vm.clear(); this.vmSwitch = 1;
-    const g = gunModel(cls); this.vm.add(g);
-    const arm = box(0.09, 0.09, 0.4, 0x3a3f46, 0.02, -0.07, 0.22); arm.castShadow = false; this.vm.add(arm);
+  setViewmodel(weapon) {
+    const w = weaponInfo(weapon);
+    if (w.id === this.vmWeapon?.id) return;
+    this.vmWeapon = w; this.vmCls = w.cls; this.vmSwitch = 1; this.vmAim = 0;
+    this.handKick.fill(0); this.flashTimers.fill(0);
+    this.vmHands.forEach((hand, side) => {
+      hand.clear(); hand.visible = side === 1 || !!w.dual;
+      const gun = gunModel(w); gun.name = 'weapon';
+      hand.add(gun, handModel(side));
+      if (side === 1 && !w.dual && w.cls >= 2 && w.cls <= 6) {
+        const support = handModel(0, true); support.position.set(-.025, .035, -.26); hand.add(support);
+      }
+      const muzzle = this.muzzles[side]; muzzle.position.set(...gun.userData.muzzle); muzzle.visible = false; hand.add(muzzle);
+      hand.userData.sightY = gun.userData.sightY;
+    });
   }
-  kick(amount) { this.vmKick = Math.min(1, this.vmKick + amount); this.muzzleT = 0.045; }
+  kick(amount, hand = 1) {
+    const side = this.vmWeapon?.dual ? (hand === 0 ? 0 : 1) : 1;
+    this.handKick[side] = Math.min(1.1, this.handKick[side] + amount);
+    this.flashTimers[side] = .055;
+    this.vmKick = Math.min(1, this.vmKick + amount * .5);
+  }
 
   render(dt, view) {
     // view: {speed, reload, scoped, firstPerson}
@@ -332,24 +346,48 @@ export class World {
       const t = m.userData.target; m.position.lerp(new THREE.Vector3(t[0], t[1], t[2]), Math.min(1, dt * 25));
       if (store === this.nades) m.rotation.x += dt * 9;
     }
+    this.renderer.info.reset();
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
+    this.vmTime += dt;
+    this.vmSwitch = Math.max(0, this.vmSwitch - dt * 4);
+    this.vmKick = Math.max(0, this.vmKick - dt * 7);
+    const dual = !!this.vmWeapon?.dual;
+    const targetAim = dual || view.scoped || view.reload ? 0 : Math.max(0, Math.min(1, view.aim || 0));
+    this.vmAim += (targetAim - this.vmAim) * Math.min(1, dt * 16);
+    this.vmReload += ((view.reload ? 1 : 0) - this.vmReload) * Math.min(1, dt * 10);
+    this.vmBob += dt * (view.speed || 0) * 1.6;
+    this.vm.position.set(0, 0, 0); this.vm.rotation.set(0, 0, 0);
+    for (let side = 0; side < 2; side++) {
+      this.handKick[side] = Math.max(0, this.handKick[side] - dt * 7);
+      this.flashTimers[side] = Math.max(0, this.flashTimers[side] - dt);
+      const hand = this.vmHands[side], sign = side ? 1 : -1;
+      const kick = this.handKick[side], aim = this.vmAim;
+      const bob = Math.min(1, (view.speed || 0) / 6) * (1 - aim * .94);
+      const lower = Math.max(this.vmSwitch, this.vmReload * .65);
+      const reloadWave = this.vmReload * Math.sin(this.vmTime * 5 + side * .8);
+      const hipX = dual ? sign * .23 : .20;
+      const hipY = dual ? -.15 : -.14;
+      const sightY = hand.userData.sightY || .12;
+      hand.position.set(
+        hipX * (1 - aim) + Math.cos(this.vmBob) * .006 * bob,
+        THREE.MathUtils.lerp(hipY, -sightY, aim) - lower * .19 + Math.abs(Math.sin(this.vmBob)) * .008 * bob,
+        THREE.MathUtils.lerp(dual ? -.45 : -.43, -.26, aim) + kick * .055 + lower * .08);
+      hand.rotation.set(kick * .13 - lower * .48, (dual ? sign * -.035 : .025) * (1 - aim), sign * (lower * .32 + reloadWave * .06));
+      const gun = hand.getObjectByName('weapon');
+      const slide = gun?.getObjectByName('slide');
+      if (slide) slide.position.z = kick * .045;
+      const magazine = gun?.getObjectByName('magazine');
+      if (magazine) magazine.position.y = -this.vmReload * (.07 + Math.max(0, reloadWave) * .08);
+      const flash = this.muzzles[side];
+      flash.visible = this.flashTimers[side] > 0 && this.vmCls >= 1 && this.vmCls <= 6;
+      flash.rotation.z = Math.random() * Math.PI;
+      flash.scale.setScalar(dual || this.vmCls === 1 ? .65 : 1);
+    }
     if (view.firstPerson && !view.scoped) {
-      this.vmKick = Math.max(0, this.vmKick - dt * 7);
-      this.vmSwitch = Math.max(0, this.vmSwitch - dt * 4);
-      this.vmBob += dt * view.speed * 1.6;
-      const bob = Math.min(1, view.speed / 6);
-      const lower = Math.max(this.vmSwitch, view.reload ? 0.8 : 0);
-      this.vm.position.set(0.17 + Math.cos(this.vmBob) * 0.008 * bob, -0.17 - lower * 0.25 + Math.abs(Math.sin(this.vmBob)) * 0.01 * bob, -0.42 + this.vmKick * 0.07);
-      this.vm.rotation.set(this.vmKick * 0.18 - lower * 0.9, 0.04, 0);
-      this.muzzleT = (this.muzzleT || 0) - dt;
-      this.muzzle.visible = this.muzzleT > 0 && this.vmCls >= 1 && this.vmCls <= 6;
-      if (this.muzzle.visible) {
-        const len = [0, 0.26, 0.7, 0.5, 0.78, 1.05, 0.92][this.vmCls];
-        this.muzzle.position.set(0.17, -0.13, -0.42 - len); this.muzzle.rotation.z = Math.random() * 6;
-      }
       this.renderer.clearDepth();
       this.renderer.render(this.vmScene, this.vmCamera);
     }
+    this.frameStats = { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles };
   }
 }

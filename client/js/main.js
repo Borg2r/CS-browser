@@ -19,7 +19,9 @@ let snaps = [], latest = null, me = null, roster = new Map();
 let yaw = 0, pitch = 0, seq = 0, pending = [], pred = null, err = [0, 0, 0];
 let wasAlive = false, resetView = false, timeOffset = -Infinity;
 let punch = 0, punchYaw = 0, shotsC = 0, sinceShot = 9, eyeH = 1.62, stride = 0, lastSlot = 1, prevSlot = 1;
-let specIdx = 0, beepT = 0, chatOpen = false, sens = 1, fov = 74;
+let recoilWeapon = -1;
+const handShots = [0, 0], handSince = [9, 9];
+let specIdx = 0, beepT = 0, chatOpen = false, sens = 1, fov = 74, aimBlend = 0;
 const keys = new Set(); let mouseB = 0;
 
 // ---- settings
@@ -96,12 +98,14 @@ function connect() {
       case 'r': roster = new Map(m.pl.map(p => [p.id, p])); break;
       case 'hello':
         if (!hello) { hello = m; weapons = m.weapons; world.buildMap(m.map); hud.init(m); }
+        $('map-name').textContent = m.map.name || 'Sirocco';
         serverReady = true;
         updateReady();
         break;
       case 'joined':
         myId = m.id; joined = true; snaps = []; pending = []; pred = null; wasAlive = false; resetView = true;
         timeOffset = -Infinity;
+        aimBlend = 0;
         $('menu').classList.add('hidden'); $('hud').classList.remove('hidden');
         break;
       case 'full': $('status').textContent = 'Server is full'; break;
@@ -126,11 +130,16 @@ function onSnap(m) {
   snaps.push(m); if (snaps.length > 40) snaps.shift();
   latest = m; me = m.me;
   if (!me || !wasm) return;
+  if (recoilWeapon !== me.w) {
+    recoilWeapon = me.w; shotsC = 0; sinceShot = 9;
+    handShots.fill(0); handSince.fill(9);
+  }
   const mp = m.players.get(myId), alive = !!mp?.alive;
   if (alive) {
     if (!pred || !wasAlive || resetView) {
       pred = Float32Array.from(me.st); pending = []; err = [0, 0, 0];
-      yaw = mp.yaw; pitch = 0; resetView = false; punch = 0; shotsC = 0;
+      yaw = mp.yaw; pitch = 0; resetView = false; punch = 0; punchYaw = 0; shotsC = 0; sinceShot = 9;
+      handShots.fill(0); handSince.fill(9);
     } else {
       const before = [pred[0], pred[1], pred[2]];
       pred.set(me.st);
@@ -151,13 +160,19 @@ const safe = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;'
 function onEvent(ev) {
   switch (ev.t) {
     case 'shot': {
-      const own = ev.id === myId, cls = weapons[ev.w].cls;
+      const own = ev.id === myId, weapon = weapons[ev.w], cls = weapon.cls;
+      const hand = ev.hand ?? 1;
       let from = [ev.o[0], ev.o[1] - 0.2, ev.o[2]];
       if (own && wasAlive) {
         const c = world.camera, f = [-Math.sin(yaw), -Math.cos(yaw)];
-        from = [c.position.x + f[0] * 0.6 + Math.cos(yaw) * 0.16, c.position.y - 0.14, c.position.z + f[1] * 0.6 - Math.sin(yaw) * 0.16];
-        world.kick(cls === 5 || cls === 2 ? 0.9 : 0.4);
-        shotsC++; sinceShot = 0;
+        const side = weapon.dual ? (hand === 0 ? -0.23 : 0.23) : 0.16 * (1 - aimBlend);
+        from = [c.position.x + f[0] * 0.6 + Math.cos(yaw) * side, c.position.y - 0.14, c.position.z + f[1] * 0.6 - Math.sin(yaw) * side];
+        world.kick(cls === 5 || cls === 2 ? 0.9 : 0.4, hand);
+        if (weapon.dual) {
+          handShots[hand]++; handSince[hand] = 0;
+          shotsC = Math.max(...handShots);
+        } else shotsC++;
+        sinceShot = 0;
       }
       for (const h of ev.h) { world.tracer(from, h); world.puff(h, h[3] ? 0xb01818 : 0xd8c9a0, h[3] ? 0.09 : 0.06); }
       sfx.shot(cls, own ? null : ev.o);
@@ -202,6 +217,7 @@ const locked = () => document.pointerLockElement === canvas;
 document.addEventListener('mousedown', e => {
   if (!joined) return;
   sfx.unlock();
+  if (hud.buyOpen || chatOpen || e.target.closest('#buy')) return;
   if (!locked()) { if (!e.target.closest('#buy') && !chatOpen) canvas.requestPointerLock?.(); return; }
   if (e.button === 0) { mouseB |= B.FIRE; if (!wasAlive) specIdx++; }
   if (e.button === 2) mouseB |= B.FIRE2;
@@ -262,7 +278,7 @@ document.addEventListener('keyup', e => {
 window.addEventListener('blur', () => { keys.clear(); mouseB = 0; if (hud.wheelOpen) hud.closeWheel(); });
 
 function buttons() {
-  if (!locked() || chatOpen) return 0;
+  if (!locked() || chatOpen || hud.buyOpen) return 0;
   const k = c => keys.has(c);
   let b = 0;
   if (k('KeyW') || k('ArrowUp')) b |= B.FWD;
@@ -304,7 +320,8 @@ function frame(tms) {
     const a = now * 0.06;
     cam.position.set(Math.sin(a) * 62, 46, Math.cos(a) * 62); cam.lookAt(0, 0, 0);
     if (latest && hello) drawRemote(now, dt, -1);
-    world.render(dt, { firstPerson: false });
+    aimBlend = 0;
+    world.render(dt, { firstPerson: false, aim: 0 });
     return;
   }
 
@@ -338,7 +355,13 @@ function frame(tms) {
     eyeH += ((pred[7] > 0.5 ? 1.05 : 1.62) - eyeH) * Math.min(1, dt * 14);
     speed = Math.hypot(pred[3], pred[5]);
     sinceShot += dt;
-    if (sinceShot > Math.max(w.interval * 1.7, 0.2)) shotsC = Math.max(0, shotsC - dt * 14);
+    if (w.dual) {
+      for (let hand = 0; hand < 2; hand++) {
+        handSince[hand] += dt;
+        if (handSince[hand] > Math.max(w.interval * 1.7, 0.2)) handShots[hand] = Math.max(0, handShots[hand] - dt * 14);
+      }
+      shotsC = Math.max(...handShots);
+    } else if (sinceShot > Math.max(w.interval * 1.7, 0.2)) shotsC = Math.max(0, shotsC - dt * 14);
     // Mirrors sim::weapons::recoil_offset so the view follows the spray pattern.
     const target = Math.min(shotsC, 9) * w.recoil;
     const side = shotsC > 4 ? w.recoil * 1.8 * Math.sin((shotsC - 4) * 0.5) * Math.min((shotsC - 4) / 4, 1) : 0;
@@ -348,7 +371,7 @@ function frame(tms) {
     cam.rotation.set(pitch + punch, yaw + punchYaw, 0);
     if (pred[6] > 0.5 && speed > 3.4) { stride += speed * dt; if (stride > 2.3) { stride = 0; sfx.step(null, true); } }
     hidden = myId;
-    world.setViewmodel(w.cls);
+    world.setViewmodel(w);
   } else {
     // Spectate a living team-mate (click to cycle), or fall back to an overview.
     const mine = roster.get(myId)?.tm;
@@ -359,13 +382,15 @@ function frame(tms) {
       if (t) {
         cam.position.set(t.x, t.y + (t.flags & 1 ? 1.05 : 1.62), t.z); cam.rotation.set(t.pitch, t.yaw, 0);
         hidden = t.id; specName = `Spectating ${pname(t.id)} — click for next`;
-        world.setViewmodel(weapons[t.w].cls);
+        world.setViewmodel(weapons[t.w]);
       }
     } else { cam.position.set(0, 60, 40); cam.lookAt(0, 0, 0); }
   }
 
-  const scoped = alive && me.sc && w.zoom > 0;
-  const mag = scoped ? (w.zoom >= 4 ? (me.sc === 1 ? 2.25 : w.zoom + 1) : w.zoom) : 1;
+  const aiming = !!(alive && me.sc && w.ads && !w.dual && me.rl <= 0);
+  aimBlend += ((aiming ? 1 : 0) - aimBlend) * Math.min(1, dt * 16);
+  const scoped = aiming && w.zoom >= 4;
+  const mag = 1 + (Math.max(1, w?.zoom || 1) - 1) * aimBlend;
   const wantFov = 2 * Math.atan(Math.tan(37 * Math.PI / 180) / mag) * 180 / Math.PI;
   if (Math.abs(wantFov - fov) > 0.05) { fov += (wantFov - fov) * Math.min(1, dt * 18); cam.fov = fov; cam.updateProjectionMatrix(); }
 
@@ -391,20 +416,21 @@ function frame(tms) {
   } else if (hud.buyOpen) { hud.toggleBuy(false); hud.renderBuy(me || { mo: 0 }, 1); }
   if (!alive && me && latest.ph !== 3) specName = specName || 'You will spawn next round';
   hud.update(dt, {
-    me, snap: latest, alive, weapons, scoped, sniper: alive && w.cls === 5, hint, progress, spec: specName, locked: locked(),
+    me, snap: latest, alive, weapons, scoped, aiming, sniper: alive && w.cls === 5, hint, progress, spec: specName, locked: locked(),
     gap: 4 + speed * 1.1 + shotsC * 1.6 + (alive && pred[6] < 0.5 ? 8 : 0),
   });
   hud.scoreboard(keys.has('Tab') || latest.ph === 3, roster, latest, myId);
   hud.radar(latest, myId, roster.get(myId)?.tm, yaw, alive ? pred : null, latest.it);
 
-  world.render(dt, { firstPerson: hidden >= 0, scoped: scoped, speed: alive && pred[6] > 0.5 ? speed : 0, reload: alive && me.rl > 0 });
+  world.render(dt, { firstPerson: hidden >= 0, scoped, aim: aimBlend, speed: alive && pred[6] > 0.5 ? speed : 0,
+    reload: alive && me.rl > 0, reloadFraction: alive && w.reload > 0 ? me.rl / w.reload : 0 });
 }
 
 function drawRemote(now, dt, hidden) {
   const get = sample(now + timeOffset - INTERP);
   for (const id of latest.players.keys()) {
     const s = get(id); if (!s) continue;
-    if (world.setPlayer(id, s, weapons[s.w].cls, dt, id === hidden) && id !== hidden) sfx.step([s.x, s.y, s.z], false);
+    if (world.setPlayer(id, s, weapons[s.w], dt, id === hidden) && id !== hidden) sfx.step([s.x, s.y, s.z], false);
   }
   world.sweepPlayers();
   world.setItems(latest.it, weapons); world.setNades(latest.nd, weapons);
@@ -415,5 +441,6 @@ requestAnimationFrame(frame);
 // Debug handle for automated tests: open the page with ?debug.
 if (location.search.includes('debug')) {
   window.__bp = { world, get pred() { return pred; }, get me() { return me; }, get latest() { return latest; },
-    get view() { return { yaw, pitch }; }, set view(v) { yaw = v.yaw; pitch = v.pitch; }, get pending() { return pending.length; }, get err() { return err; } };
+    get view() { return { yaw, pitch }; }, set view(v) { yaw = v.yaw; pitch = v.pitch; }, get pending() { return pending.length; }, get err() { return err; },
+    get weapons() { return weapons; }, get aim() { return aimBlend; }, get fov() { return fov; } };
 }

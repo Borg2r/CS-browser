@@ -57,14 +57,22 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 
 ## Game
 
-- Map **Dockyard**: a container terminal with two sites and three lanes.
+- Map **Sirocco**: an original sandstone town with two objective courtyards,
+  long and short approaches, central double doors, and a covered tunnel to B.
+  Its lanes recall classic desert tactical-shooter maps, with an original layout.
+- Detailed procedural weapons and operators, articulated equipment, warm desert
+  lighting, and architectural scenery. No external model downloads are needed.
 - 30 rounds: sides swap at half-time after 15, first team to 16 wins.
 - Fixed spray patterns, bullet penetration through thin cover, fall damage,
-  slow-down when hit, two-level sniper zoom, knife slash / stab / backstab.
-- 22 firearms (pistols, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
+  slow-down when hit, hold-to-aim iron sights and optics, knife slash / stab / backstab.
+- 24 firearms (pistols, two akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
   knife, frag / flash / smoke grenades, armour, helmet and defuse kit.
 - Economy with kill rewards, round win / loss bonuses and a buy menu.
 - Weapon drops and pick-ups, spectating while dead, radar, scoreboard, chat.
+- **Twin Kestrels** and **Twin Mammoths** can be bought under Pistols. Each hand
+  has its own magazine and firing rhythm: left click fires the left pistol,
+  right click fires the right pistol, and pressing both fires both. Akimbo has
+  no aiming mode. The HUD shows left and right ammunition separately.
 
 ## Controls
 
@@ -72,7 +80,8 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 |---------------------|-----------------------------------------------|
 | WASD / Space        | Move / jump                                   |
 | C or Ctrl / Shift   | Crouch / walk                                 |
-| Mouse 1 / Mouse 2   | Fire, plant / scope, knife stab               |
+| Mouse 1 / Mouse 2   | Fire, plant / hold to aim, knife stab         |
+| Mouse 1 / Mouse 2 (akimbo) | Left pistol / right pistol; no aiming  |
 | R / E / G           | Reload / defuse / drop weapon                 |
 | B                   | Buy menu (number keys or click)               |
 | Q                   | Hold: weapon wheel · tap: last weapon         |
@@ -87,3 +96,8 @@ crates/server   game server, rules, bots, navigation
 crates/predict  wasm wrapper around sim's movement step
 client          web client (index.html, js/, vendor/three)
 ```
+
+For a local functional check of ADS, akimbo input and the new map, run
+`node scripts/features-smoke.mjs http://127.0.0.1:8082` against a fresh local
+server on port 8082. This test joins temporary guest players and fires weapons;
+run it on a development server rather than during a match with friends.

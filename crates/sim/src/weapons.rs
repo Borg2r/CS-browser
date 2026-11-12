@@ -38,8 +38,12 @@ pub struct Weapon {
     pub speed: f32,
     pub reward: u32,
     pub pellets: u8,
-    /// Scope magnification (0 = no scope).
+    /// Aim magnification. Values >= 4 use a telescopic scope.
     pub zoom: f32,
+    /// Two independently fired sidearms, with half of mag capacity in each hand.
+    pub dual: bool,
+    /// Holding the secondary trigger aims this firearm.
+    pub ads: bool,
     /// 0 both teams, 1 attackers only, 2 defenders only.
     pub team: u8,
 }
@@ -52,7 +56,9 @@ const fn gun(
     Weapon {
         id, name, class, price, dmg, interval, mag, reserve, reload, auto,
         spread, spread_inc: spread * 0.55 + 0.002, spread_max: spread * 5.0 + 0.02,
-        recoil, falloff: 0.94, pen, speed, reward: 300, pellets: 1, zoom: 0.0, team,
+        recoil, falloff: 0.94, pen, speed, reward: 300, pellets: 1,
+        zoom: if class >= C_PISTOL && class <= C_LMG { 1.35 } else { 0.0 },
+        dual: false, ads: class >= C_PISTOL && class <= C_LMG, team,
     }
 }
 
@@ -60,7 +66,14 @@ const fn with(mut w: Weapon, falloff: f32, reward: u32, pellets: u8, zoom: f32) 
     w.falloff = falloff;
     w.reward = reward;
     w.pellets = pellets;
-    w.zoom = zoom;
+    if zoom > 0.0 { w.zoom = zoom; }
+    w
+}
+
+const fn akimbo(mut w: Weapon) -> Weapon {
+    w.dual = true;
+    w.ads = false;
+    w.zoom = 0.0;
     w
 }
 
@@ -72,7 +85,7 @@ pub const BOMB: usize = 4;
 pub const PISTOL_ATK: usize = 5;
 pub const PISTOL_DEF: usize = 6;
 
-pub static WEAPONS: [Weapon; 27] = [
+pub static WEAPONS: [Weapon; 29] = [
     with(gun("knife", "Combat Knife", C_KNIFE, 0, 0, 45.0, 0.45, 0, 0, 0.0, true, 0.0, 0.0, 0.85, 6.35), 1.0, 1500, 1, 0.0),
     gun("frag", "Frag Grenade", C_FRAG, 0, 300, 100.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.6, 6.2),
     gun("flash", "Flashbang", C_FLASH, 0, 200, 0.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.0, 6.2),
@@ -106,6 +119,9 @@ pub static WEAPONS: [Weapon; 27] = [
     with(gun("reaper", "Reaper DMR", C_SNIPER, 0, 5000, 70.0, 0.25, 20, 60, 3.4, false, 0.001, 0.012, 0.90, 5.3), 0.99, 300, 1, 4.0),
     // Machine gun
     gun("anvil", "Anvil LMG", C_LMG, 0, 5750, 32.0, 0.080, 100, 200, 4.7, true, 0.011, 0.007, 0.75, 5.6),
+    // Akimbo: mag is the combined capacity; mouse buttons fire each hand.
+    akimbo(gun("twin_kestrel", "Twin Kestrels", C_PISTOL, 0, 500, 22.0, 0.16, 30, 120, 2.9, false, 0.016, 0.014, 0.50, 6.2)),
+    akimbo(gun("twin_mammoth", "Twin Mammoths", C_PISTOL, 0, 750, 46.0, 0.34, 14, 56, 3.3, false, 0.014, 0.035, 0.75, 6.0)),
 ];
 
 pub fn by_id(id: &str) -> Option<usize> {

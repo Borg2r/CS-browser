@@ -162,9 +162,12 @@ mod tests {
         let m = map();
         let nav = Nav::build(m);
         for team in &m.spawns {
-            for site in &m.sites {
-                let p = nav.path(team[0], site.center());
-                assert!(p.len() > 5, "no path from spawn to site");
+            for &spawn in team {
+                for site in &m.sites {
+                    let p = nav.path(spawn, site.center());
+                    assert!(p.len() > 5, "no path from spawn {spawn:?} to site");
+                    assert!(p.iter().all(|p| !collides(m, &[p[0], 0.01, p[1]], H_STAND)), "path crosses a solid map obstacle");
+                }
             }
         }
     }

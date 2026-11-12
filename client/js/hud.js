@@ -30,17 +30,18 @@ export class Hud {
     this.weapons = hello.weapons; this.map = hello.map;
     // Static radar background.
     const c = document.createElement('canvas'); c.width = 200; c.height = 186;
-    const g = c.getContext('2d'), s = 200 / (hello.map.w * 2);
-    this.rs = s; this.rox = hello.map.w; this.roz = hello.map.h;
-    g.fillStyle = '#3b424a'; g.fillRect(0, 0, 200, 186);
+    const g = c.getContext('2d'), s = Math.min(192 / (hello.map.w * 2), 178 / (hello.map.h * 2));
+    this.rs = s; this.rox = hello.map.w + (200 - hello.map.w * 2 * s) / (2 * s);
+    this.roz = hello.map.h + (186 - hello.map.h * 2 * s) / (2 * s);
+    g.fillStyle = '#67533c'; g.fillRect(0, 0, 200, 186);
     hello.map.sites.forEach((z, k) => {
       g.fillStyle = 'rgba(240,193,75,.22)'; g.fillRect((z[0] + this.rox) * s, (z[1] + this.roz) * s, (z[2] - z[0]) * s, (z[3] - z[1]) * s);
       g.fillStyle = 'rgba(240,193,75,.9)'; g.font = 'bold 16px sans-serif'; g.textAlign = 'center';
       g.fillText('AB'[k], ((z[0] + z[2]) / 2 + this.rox) * s, ((z[1] + z[3]) / 2 + this.roz) * s + 6);
     });
     for (const b of hello.map.boxes) {
-      if (!b[6]) continue;
-      g.fillStyle = ['', '#12161b', '#77808a', '#8a7352', '#9a9a94'][b[6]];
+      if (!b[6] || b[1] >= 2) continue;
+      g.fillStyle = ['', '#2c2723', '#a39170', '#8a7352', '#b3a487'][b[6]];
       g.fillRect((b[0] + this.rox) * s, (b[2] + this.roz) * s, (b[3] - b[0]) * s, (b[5] - b[2]) * s);
     }
     this.radarBg = c;
@@ -80,7 +81,7 @@ export class Hud {
       CATS.forEach((c, i) => { h += `<div class="row" data-k="${i + 1}"><span class="k">${i + 1}</span>${esc(c[0])}</div>`; });
     } else {
       this.buyItems(this.buyCat, team).forEach((w, i) => {
-        const stat = w.mag ? `${w.dmg} dmg · ${w.mag} rds` : '';
+        const stat = w.mag ? (w.dual ? `DUAL · ${w.mag / 2} + ${w.mag / 2} rds` : `${w.dmg} dmg · ${w.mag} rds`) : '';
         h += `<div class="row ${w.price > me.mo ? 'no' : ''}" data-k="${i + 1}"><span class="k">${i + 1}</span>${esc(w.name)}<span class="s">${stat}</span><span class="p">$${w.price}</span></div>`;
       });
     }
@@ -184,7 +185,7 @@ export class Hud {
     $('alive').textContent = `${a} alive · round ${snap.rd} · ${d} alive`;
     const show = s.alive;
     for (const id of ['vitals', 'ammo', 'money']) $(id).style.visibility = show ? 'visible' : 'hidden';
-    $('crosshair').style.display = show && !s.scoped && !s.sniper ? '' : 'none';
+    $('crosshair').style.display = show && !s.aiming && !s.sniper ? '' : 'none';
     $('crosshair').style.setProperty('--gap', s.gap.toFixed(1) + 'px');
     $('scope').classList.toggle('hidden', !(show && s.scoped));
     $('spec').classList.toggle('hidden', show || !s.spec); $('spec').textContent = s.spec || '';
@@ -198,9 +199,11 @@ export class Hud {
     $('money').textContent = '$' + me.mo;
     const w = s.weapons[me.w];
     const gun = w.mag > 0;
-    $('clip').textContent = gun ? me.am : w.slot >= 3 && w.slot <= 5 ? me.nd[w.slot - 3] : '';
+    $('ammo').classList.toggle('dual', !!w.dual);
+    $('clip').textContent = w.dual ? `${me.amL ?? 0} | ${me.amR ?? 0}` : gun ? me.am : w.slot >= 3 && w.slot <= 5 ? me.nd[w.slot - 3] : '';
     $('reserve').textContent = gun ? '/ ' + me.rs : '';
     $('wname').textContent = w.name + (me.rl > 0 ? ' — reloading' : '');
+    $('weapon-mode').textContent = w.dual ? 'LMB: LEFT  ·  RMB: RIGHT' : w.ads ? 'HOLD RMB TO AIM' : w.cls === 0 ? 'LMB: SLASH  ·  RMB: STAB' : '';
     $('carry').textContent = [me.bm ? 'CHARGE [5]' : '', me.kit ? 'DEFUSE KIT' : '',
       me.nd[0] ? 'FRAG' : '', me.nd[1] ? `FLASH×${me.nd[1]}` : '', me.nd[2] ? 'SMOKE' : ''].filter(Boolean).join(' · ');
   }

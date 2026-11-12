@@ -28,7 +28,7 @@
   <div id="scope" class="hidden"></div>
   <div id="vitals"><span id="hp">100</span><small>HP</small><span id="armor">0</span><small id="armorLabel">ARMOR</small></div>
   <div id="money">$800</div>
-  <div id="ammo"><span id="clip">0</span><small id="reserve">/ 0</small><div id="wname"></div><div id="carry"></div></div>
+  <div id="ammo"><span id="clip">0</span><small id="reserve">/ 0</small><div id="wname"></div><div id="weapon-mode"></div><div id="carry"></div></div>
   <div id="spec" class="hidden"></div>
   <div id="damage"></div>
   <div id="flash"></div>
@@ -40,7 +40,8 @@
 
 <div id="menu">
   <h1>BREACHPOINT</h1>
-  <p class="tag">Online tactical shooter &middot; map: Dockyard</p>
+  <p class="tag">Online tactical shooter &middot; <span id="map-name">Sirocco</span></p>
+  <div class="map-brief"><span class="map-kicker">DESERT OPERATION</span><p>Sunlit courtyards. Shadowed tunnels. Two sites to fight for.</p><small>New: detailed equipment, iron sights and dual pistols.</small></div>
   <label>Name <input id="name" maxlength="16" placeholder="Player"></label>
   <label>Mouse sensitivity <input id="sens" type="range" min="0.2" max="4" step="0.1" value="1"></label>
   <label>Volume <input id="vol" type="range" min="0" max="1" step="0.05" value="0.6"></label>
@@ -56,9 +57,10 @@
   <p class="keys">Play on a computer with a keyboard and mouse. Up to 10 players; bots fill empty seats.</p>
   <div class="keys">
     <b>WASD</b> move &middot; <b>Space</b> jump &middot; <b>C / Ctrl</b> crouch &middot; <b>Shift</b> walk &middot;
-    <b>Mouse</b> aim / fire / scope &middot; <b>R</b> reload &middot; <b>B</b> buy &middot;
+    <b>LMB</b> fire &middot; <b>Hold RMB</b> aim &middot; <b>R</b> reload &middot; <b>B</b> buy &middot;
     <b>Q</b> hold: weapon wheel, tap: last weapon &middot; <b>1-5</b> / wheel: weapons &middot;
-    <b>E</b> defuse &middot; <b>G</b> drop &middot; <b>Tab</b> scores &middot; <b>T</b> chat
+    <b>E</b> defuse &middot; <b>G</b> drop &middot; <b>Tab</b> scores &middot; <b>T</b> chat<br>
+    <b>Akimbo</b> left click = left pistol &middot; right click = right pistol &middot; no aiming
   </div>
 </div>
 <script type="module" src="js/main.js"></script>

@@ -90,11 +90,43 @@ pub struct Gun {
     pub w: usize,
     pub ammo: u16,
     pub reserve: u16,
+    /// Loaded rounds in the left gun. Right rounds = ammo - left_ammo.
+    pub left_ammo: u16,
 }
 
 impl Gun {
     pub fn new(w: usize) -> Gun {
-        Gun { w, ammo: WEAPONS[w].mag, reserve: WEAPONS[w].reserve }
+        let def = &WEAPONS[w];
+        Gun { w, ammo: def.mag, reserve: def.reserve, left_ammo: if def.dual { def.mag / 2 } else { 0 } }
+    }
+
+    fn ammo_hand(&self, hand: usize) -> u16 {
+        if hand == 0 { self.left_ammo } else { self.ammo - self.left_ammo }
+    }
+
+    fn consume(&mut self, hand: usize) -> bool {
+        if self.ammo_hand(hand) == 0 { return false; }
+        self.ammo -= 1;
+        if hand == 0 { self.left_ammo -= 1; }
+        true
+    }
+
+    fn reload(&mut self) {
+        let def = &WEAPONS[self.w];
+        if def.dual {
+            let mut rounds = [self.left_ammo, self.ammo - self.left_ammo];
+            for loaded in &mut rounds {
+                let take = (def.mag / 2 - *loaded).min(self.reserve);
+                *loaded += take;
+                self.reserve -= take;
+            }
+            self.left_ammo = rounds[0];
+            self.ammo = rounds[0] + rounds[1];
+        } else {
+            let take = (def.mag - self.ammo).min(self.reserve);
+            self.ammo += take;
+            self.reserve -= take;
+        }
     }
 }
 
@@ -132,10 +164,13 @@ pub struct Player {
     pub kit: bool,
     pub slot: u8,
     pub cooldown: f32,
+    hand_cooldown: [f32; 2],
+    hand_shots: [f32; 2],
+    hand_since_shot: [f32; 2],
     pub reload_t: f32,
     pub shots: f32,
     pub since_shot: f32,
-    /// Scope zoom level: 0 off, 1 or 2 zoomed.
+    /// 0 hip fire, 1 aiming while the secondary trigger is held.
     pub scoped: u8,
     pub plant_t: f32,
     pub defuse_t: f32,
@@ -156,7 +191,7 @@ impl Player {
             yaw: 0.0, pitch: 0.0, buttons: 0, prev_buttons: 0,
             hp: 0, armor: 0, helmet: false, money: START_MONEY, kills: 0, deaths: 0,
             prim: None, sec: None, nades: [0; 3], has_bomb: false, kit: false,
-            slot: 2, cooldown: 0.0, reload_t: 0.0, shots: 0.0, since_shot: 9.0, scoped: 0,
+            slot: 2, cooldown: 0.0, hand_cooldown: [0.0; 2], hand_shots: [0.0; 2], hand_since_shot: [9.0; 2], reload_t: 0.0, shots: 0.0, since_shot: 9.0, scoped: 0,
             plant_t: 0.0, defuse_t: 0.0, flash_t: 0.0,
             cmds: VecDeque::new(), ack: 0, budget: 0.0, interp_time: 0.0,
             hist: VecDeque::new(),
@@ -213,6 +248,12 @@ impl Player {
         }
     }
 
+    fn update_aim(&mut self) {
+        let def = &WEAPONS[self.cur_weapon()];
+        self.scoped = u8::from(self.alive && def.ads && !def.dual && self.buttons & B_FIRE2 != 0
+            && self.reload_t <= 0.0 && self.plant_t <= 0.0 && self.defuse_t <= 0.0);
+    }
+
     pub fn max_speed(&self) -> f32 {
         let w = &WEAPONS[self.cur_weapon()];
         if self.scoped > 0 && w.zoom > 0.0 { w.speed * 0.6 } else { w.speed }
@@ -228,6 +269,7 @@ pub struct Item {
     pub w: usize,
     pub ammo: u16,
     pub reserve: u16,
+    pub left_ammo: u16,
     pub pos: V3,
     no_pick: (u32, f64),
 }
@@ -484,7 +526,7 @@ impl Game {
         if self.players[i].alive && self.players[i].has_bomb {
             self.players[i].has_bomb = false;
             let pos = self.players[i].st.pos;
-            self.drop_item(BOMB, 0, 0, pos, 0);
+            self.drop_item(Gun::new(BOMB), pos, 0);
         }
         self.players.remove(i);
         self.roster_dirty = true;
@@ -553,6 +595,9 @@ impl Game {
         p.buttons = 0;
         p.prev_buttons = 0;
         p.cooldown = 0.0;
+        p.hand_cooldown = [0.0; 2];
+        p.hand_shots = [0.0; 2];
+        p.hand_since_shot = [9.0; 2];
         p.reload_t = 0.0;
         p.shots = 0.0;
         p.scoped = 0;
@@ -651,6 +696,7 @@ impl Game {
         p.scoped = 0;
         p.plant_t = 0.0;
         p.shots = 0.0;
+        p.hand_shots = [0.0; 2];
         p.cooldown = p.cooldown.max(0.35);
     }
 
@@ -707,6 +753,8 @@ impl Game {
                         p.slot = s;
                         p.reload_t = 0.0;
                         p.scoped = 0;
+                        p.shots = 0.0;
+                        p.hand_shots = [0.0; 2];
                         p.cooldown = 0.35;
                     }
                 }
@@ -715,17 +763,17 @@ impl Game {
         }
         let (pos, id) = (p.st.pos, p.id);
         if let Some(g) = dropped {
-            self.drop_item(g.w, g.ammo, g.reserve, pos, id);
+            self.drop_item(g, pos, id);
         }
         true
     }
 
-    fn drop_item(&mut self, w: usize, ammo: u16, reserve: u16, pos: V3, by: u32) {
+    fn drop_item(&mut self, gun: Gun, pos: V3, by: u32) {
         let o = [pos[0], pos[1] + 0.6, pos[2]];
         let y = o[1] - ray_world(self.map, &o, &[0.0, -1.0, 0.0], 50.0);
         let id = self.id();
         self.items.push(Item {
-            id, w, ammo, reserve,
+            id, w: gun.w, ammo: gun.ammo, reserve: gun.reserve, left_ammo: gun.left_ammo,
             pos: [pos[0], y, pos[2]],
             no_pick: (by, self.time + 1.5),
         });
@@ -744,7 +792,7 @@ impl Game {
             1 => p.sec.take(),
             6 if p.has_bomb => {
                 p.has_bomb = false;
-                Some(Gun { w: BOMB, ammo: 0, reserve: 0 })
+                Some(Gun::new(BOMB))
             }
             _ => None,
         };
@@ -753,10 +801,15 @@ impl Game {
         p.reload_t = 0.0;
         p.scoped = 0;
         p.plant_t = 0.0;
+        p.shots = 0.0;
+        p.since_shot = 9.0;
+        p.hand_shots = [0.0; 2];
+        p.hand_since_shot = [9.0; 2];
+        p.cooldown = p.cooldown.max(0.35);
         if collides(self.map, &pos, 0.5) {
             pos = self.players[i].st.pos;
         }
-        self.drop_item(g.w, g.ammo, g.reserve, pos, id);
+        self.drop_item(g, pos, id);
     }
 
     fn pickups(&mut self) {
@@ -777,13 +830,19 @@ impl Game {
                 };
                 if near && !blocked && wants {
                     let it = self.items.swap_remove(k);
-                    let g = Gun { w: it.w, ammo: it.ammo, reserve: it.reserve };
+                    let g = Gun { w: it.w, ammo: it.ammo, reserve: it.reserve, left_ammo: it.left_ammo };
                     match slot {
                         6 => p.has_bomb = true,
                         0 => {
                             p.prim = Some(g);
                             if p.slot != 6 {
                                 p.slot = 0;
+                                p.reload_t = 0.0;
+                                p.scoped = 0;
+                                p.shots = 0.0;
+                                p.since_shot = 9.0;
+                                p.hand_shots = [0.0; 2];
+                                p.hand_since_shot = [9.0; 2];
                                 p.cooldown = p.cooldown.max(0.35);
                             }
                         }
@@ -829,23 +888,30 @@ impl Game {
         (p.st.pos, p.st.crouch)
     }
 
-    fn shoot(&mut self, i: usize) {
+    fn shoot(&mut self, i: usize, hand: usize) {
         let (w, origin, yaw, pitch, team, id, shots, speed, ground, crouch, scoped, at) = {
             let p = &mut self.players[i];
             let w = p.cur_weapon();
             let Some(g) = p.gun_mut() else { return };
-            g.ammo -= 1;
-            let shots = p.shots;
-            p.shots += 1.0;
+            if !g.consume(hand) { return; }
+            let def = &WEAPONS[w];
+            let shots = if def.dual { p.hand_shots[hand] } else { p.shots };
+            if def.dual {
+                p.hand_shots[hand] += 1.0;
+                p.hand_since_shot[hand] = 0.0;
+                p.hand_cooldown[hand] = def.interval;
+            } else {
+                p.shots += 1.0;
+                p.cooldown = def.interval;
+            }
             p.since_shot = 0.0;
-            p.cooldown = WEAPONS[w].interval;
             let at = if p.conn.is_some() && p.interp_time > 0.0 {
                 p.interp_time.clamp(self.time - 0.4, self.time)
             } else {
                 self.time
             };
             (w, p.st.eye(), p.yaw, p.pitch, p.team, p.id, shots,
-             p.st.vel[0].hypot(p.st.vel[2]), p.st.ground, p.st.crouch, p.scoped > 0 || p.bot.is_some(), at)
+             p.st.vel[0].hypot(p.st.vel[2]), p.st.ground, p.st.crouch, p.scoped > 0, at)
         };
         let def = &WEAPONS[w];
         let mv = (speed / def.speed).min(1.0);
@@ -861,6 +927,7 @@ impl Game {
         if crouch {
             spread *= 0.75;
         }
+        if scoped && def.ads { spread *= 0.62; }
         let (side, climb) = recoil_offset(def.recoil, shots);
         // How much solid material (metres) a round can punch through.
         let power = match def.class {
@@ -910,8 +977,8 @@ impl Game {
             }
         }
         self.events.push(format!(
-            "{{\"t\":\"shot\",\"id\":{},\"w\":{},\"o\":[{:.2},{:.2},{:.2}],\"h\":[{}]}}",
-            id, w, origin[0], origin[1], origin[2], ends
+            "{{\"t\":\"shot\",\"id\":{},\"w\":{},\"hand\":{},\"o\":[{:.2},{:.2},{:.2}],\"h\":[{}]}}",
+            id, w, hand, origin[0], origin[1], origin[2], ends
         ));
     }
 
@@ -994,7 +1061,7 @@ impl Game {
             v.defuse_t = 0.0;
             v.scoped = 0;
             let bomb = std::mem::take(&mut v.has_bomb);
-            (v.st.pos, v.id, v.prim.take(), bomb)
+            (v.st.pos, v.id, v.prim.take().or_else(|| v.sec.take()), bomb)
         };
         let mut kid = 0;
         if let Some(a) = attacker {
@@ -1006,10 +1073,10 @@ impl Game {
             }
         }
         if let Some(g) = prim {
-            self.drop_item(g.w, g.ammo, g.reserve, pos, 0);
+            self.drop_item(g, pos, 0);
         }
         if bomb {
-            self.drop_item(BOMB, 0, 0, [pos[0] + 0.4, pos[1], pos[2] + 0.3], 0);
+            self.drop_item(Gun::new(BOMB), [pos[0] + 0.4, pos[1], pos[2] + 0.3], 0);
         }
         self.events
             .push(format!("{{\"t\":\"kill\",\"k\":{},\"v\":{},\"w\":{},\"hs\":{}}}", kid, vid, w, hs));
@@ -1121,12 +1188,21 @@ impl Game {
         p.since_shot += dt;
         let w = p.cur_weapon();
         let def = &WEAPONS[w];
+        for hand in 0..2 {
+            p.hand_cooldown[hand] = (p.hand_cooldown[hand] - dt).max(0.0);
+            p.hand_since_shot[hand] += dt;
+            if p.hand_since_shot[hand] > (def.interval * 1.7).max(0.2) {
+                p.hand_shots[hand] = (p.hand_shots[hand] - dt * 14.0).max(0.0);
+            }
+        }
         if p.since_shot > (def.interval * 1.7).max(0.2) {
             p.shots = (p.shots - dt * 14.0).max(0.0);
         }
         let fire = p.buttons & B_FIRE != 0;
         let pressed = fire && p.prev_buttons & B_FIRE == 0;
-        let fire2 = p.buttons & B_FIRE2 != 0 && p.prev_buttons & B_FIRE2 == 0;
+        let right_fire = p.buttons & B_FIRE2 != 0;
+        let right_pressed = right_fire && p.prev_buttons & B_FIRE2 == 0;
+        p.update_aim();
         let reload = p.buttons & B_RELOAD != 0;
         let using = p.buttons & B_USE != 0;
         p.prev_buttons = p.buttons;
@@ -1137,6 +1213,7 @@ impl Game {
             defusing = dist(&bp, &p.st.pos) < 1.8 && p.st.ground;
         }
         if defusing {
+            p.scoped = 0;
             if p.defuse_t == 0.0 {
                 self.events.push(format!("{{\"t\":\"defusing\",\"id\":{}}}", p.id));
             }
@@ -1154,7 +1231,7 @@ impl Game {
 
         enum Act {
             None,
-            Shoot,
+            Shoot(u8),
             Melee(bool),
             Throw(usize),
         }
@@ -1191,33 +1268,41 @@ impl Game {
                 }
             }
             _ => {
-                let zoom = def.zoom > 0.0;
                 if p.reload_t > 0.0 {
-                    p.reload_t -= dt;
-                    if p.reload_t <= 0.0 {
-                        p.reload_t = 0.0;
-                        if let Some(g) = p.gun_mut() {
-                            let take = (def.mag - g.ammo).min(g.reserve);
-                            g.ammo += take;
-                            g.reserve -= take;
-                        }
+                    p.scoped = 0;
+                    p.reload_t = (p.reload_t - dt).max(0.0);
+                    if p.reload_t == 0.0 {
+                        if let Some(g) = p.gun_mut() { g.reload(); }
                     }
                 } else if let Some(g) = p.gun().copied() {
                     if (reload || g.ammo == 0) && g.ammo < def.mag && g.reserve > 0 && p.cooldown <= 0.0 {
                         p.reload_t = def.reload;
                         p.scoped = 0;
                         p.shots = 0.0;
+                        p.hand_shots = [0.0; 2];
                         self.events.push(format!("{{\"t\":\"reload\",\"id\":{}}}", p.id));
-                    } else if ((def.auto && fire) || pressed) && p.cooldown <= 0.0 && g.ammo > 0 {
-                        act = Act::Shoot;
-                    } else if zoom && fire2 {
-                        p.scoped = (p.scoped + 1) % if def.zoom >= 4.0 { 3 } else { 2 };
+                    } else if p.cooldown <= 0.0 {
+                        if def.dual {
+                            let mut hands = 0;
+                            for (hand, held, down) in [(0, fire, pressed), (1, right_fire, right_pressed)] {
+                                if (down || (def.auto && held)) && p.hand_cooldown[hand] <= 0.0 && g.ammo_hand(hand) > 0 {
+                                    hands |= 1 << hand;
+                                }
+                            }
+                            if hands != 0 { act = Act::Shoot(hands); }
+                        } else if ((def.auto && fire) || pressed) && g.ammo > 0 {
+                            act = Act::Shoot(1 << 1);
+                        }
                     }
                 }
             }
         }
         match act {
-            Act::Shoot => self.shoot(i),
+            Act::Shoot(hands) => {
+                for hand in 0..2 {
+                    if hands & (1 << hand) != 0 { self.shoot(i, hand); }
+                }
+            }
             Act::Melee(stab) => self.melee(i, stab),
             Act::Throw(k) => self.throw(i, k),
             Act::None => {}
@@ -1246,6 +1331,7 @@ impl Game {
                 bot::think(self, i, dt);
                 let p = &mut self.players[i];
                 if p.alive {
+                    p.update_aim();
                     let held = frozen || p.plant_t > 0.0 || p.defuse_t > 0.0;
                     let b = if held { p.buttons & FREEZE_MASK } else { p.buttons };
                     let sp = p.max_speed();
@@ -1263,6 +1349,7 @@ impl Game {
                     p.yaw = c.yaw;
                     p.pitch = c.pitch.clamp(-1.55, 1.55);
                     p.buttons = c.buttons;
+                    p.update_aim();
                     p.interp_time = c.it;
                     let d = c.dt.clamp(0.0, 0.05);
                     if p.alive && d <= p.budget + 1e-4 {
@@ -1382,10 +1469,10 @@ impl Game {
                 json!({"id": w.id, "name": w.name, "cls": w.class, "price": w.price, "mag": w.mag,
                        "interval": w.interval, "auto": w.auto, "speed": w.speed, "zoom": w.zoom,
                        "team": w.team, "recoil": w.recoil, "slot": slot_of(w.class), "reload": w.reload,
-                       "dmg": w.dmg})
+                       "dmg": w.dmg, "dual": w.dual, "ads": w.ads})
             })
             .collect();
-        json!({"t": "hello", "map": {"boxes": boxes, "sites": sites, "w": self.map.w, "h": self.map.h},
+        json!({"t": "hello", "map": {"name": "Sirocco", "theme": "desert", "boxes": boxes, "sites": sites, "w": self.map.w, "h": self.map.h},
                "weapons": weapons, "win": WIN_ROUNDS, "teamSize": self.team_size})
         .to_string()
     }
@@ -1491,10 +1578,11 @@ impl Game {
                     let g = p.gun();
                     let w = |g: &Option<Gun>| g.map(|g| g.w as i32).unwrap_or(-1);
                     let _ = write!(s,
-                        ",\"me\":{{\"st\":[{},{},{},{},{},{},{},{},{}],\"ack\":{},\"hp\":{},\"ar\":{},\"he\":{},\"mo\":{},\"sl\":{},\"w\":{},\"am\":{},\"rs\":{},\"pr\":{},\"se\":{},\"nd\":[{},{},{}],\"bm\":{},\"kit\":{},\"rl\":{:.2},\"sc\":{},\"pl\":{:.2},\"df\":{:.2},\"cb\":{}}}}}",
+                        ",\"me\":{{\"st\":[{},{},{},{},{},{},{},{},{}],\"ack\":{},\"hp\":{},\"ar\":{},\"he\":{},\"mo\":{},\"sl\":{},\"w\":{},\"am\":{},\"amL\":{},\"amR\":{},\"rs\":{},\"pr\":{},\"se\":{},\"nd\":[{},{},{}],\"bm\":{},\"kit\":{},\"rl\":{:.2},\"sc\":{},\"pl\":{:.2},\"df\":{:.2},\"cb\":{}}}}}",
                         st[0], st[1], st[2], st[3], st[4], st[5], st[6], st[7], st[8],
                         p.ack, p.hp.max(0), p.armor, p.helmet, p.money, p.slot, p.cur_weapon(),
-                        g.map(|g| g.ammo).unwrap_or(0), g.map(|g| g.reserve).unwrap_or(0),
+                        g.map(|g| g.ammo).unwrap_or(0), g.map(|g| g.ammo_hand(0)).unwrap_or(0),
+                        g.map(|g| g.ammo_hand(1)).unwrap_or(0), g.map(|g| g.reserve).unwrap_or(0),
                         w(&p.prim), w(&p.sec), p.nades[0], p.nades[1], p.nades[2],
                         p.has_bomb, p.kit, p.reload_t, p.scoped,
                         p.plant_t / PLANT_TIME, p.defuse_t / if p.kit { 5.0 } else { 10.0 },
@@ -1509,6 +1597,234 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn weapon_game(weapon: &str) -> Game {
+        let mut g = Game::new();
+        g.players.truncate(1);
+        g.phase = Phase::Live;
+        let p = &mut g.players[0];
+        p.bot = None;
+        p.alive = true;
+        p.hp = 100;
+        p.prim = None;
+        p.sec = Some(Gun::new(by_id(weapon).unwrap()));
+        p.slot = 1;
+        p.cooldown = 0.0;
+        p.buttons = 0;
+        p.prev_buttons = 0;
+        p.st.ground = true;
+        g.events.clear();
+        g
+    }
+
+    fn input(g: &mut Game, buttons: u32, dt: f32) {
+        g.players[0].buttons = buttons;
+        g.update_weapon(0, dt);
+    }
+
+    fn shot_hands(g: &Game) -> Vec<u64> {
+        g.events.iter().filter_map(|event| {
+            let event: serde_json::Value = serde_json::from_str(event).unwrap();
+            (event["t"] == "shot").then(|| event["hand"].as_u64().unwrap())
+        }).collect()
+    }
+
+    #[test]
+    fn akimbo_has_independent_triggers_magazines_cooldowns_and_recoil() {
+        for id in ["twin_kestrel", "twin_mammoth"] {
+            let mut g = weapon_game(id);
+            let capacity = g.players[0].gun().unwrap().ammo / 2;
+            input(&mut g, B_FIRE, TICK);
+            let gun = g.players[0].gun().unwrap();
+            assert_eq!((gun.ammo_hand(0), gun.ammo_hand(1)), (capacity - 1, capacity));
+            assert_eq!(g.players[0].hand_shots, [1.0, 0.0]);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            let gun = g.players[0].gun().unwrap();
+            assert_eq!((gun.ammo_hand(0), gun.ammo_hand(1)), (capacity - 1, capacity - 1));
+            assert_eq!(g.players[0].hand_shots, [1.0, 1.0]);
+            assert_eq!(shot_hands(&g), [0, 1]);
+            assert_eq!(g.players[0].scoped, 0);
+            // Holding either semi-automatic trigger must not produce more shots.
+            for _ in 0..60 { input(&mut g, B_FIRE | B_FIRE2, TICK); }
+            assert_eq!(g.players[0].gun().unwrap().ammo, capacity * 2 - 2);
+            input(&mut g, 0, TICK);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(shot_hands(&g), [0, 1, 0, 1]);
+            assert_eq!(g.players[0].gun().unwrap().ammo, capacity * 2 - 4);
+        }
+    }
+
+    #[test]
+    fn empty_left_pistol_does_not_consume_right_ammo_or_force_reload() {
+        let mut g = weapon_game("twin_kestrel");
+        let gun = g.players[0].gun_mut().unwrap();
+        gun.left_ammo = 0;
+        gun.ammo = 15;
+        input(&mut g, B_FIRE, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 15);
+        assert_eq!(g.players[0].reload_t, 0.0);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 14);
+        assert_eq!(shot_hands(&g), [1]);
+        assert_eq!(g.players[0].scoped, 0);
+    }
+
+    #[test]
+    fn dual_reload_preserves_ammunition_and_blocks_both_triggers() {
+        let mut g = weapon_game("twin_kestrel");
+        input(&mut g, B_FIRE, TICK);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        input(&mut g, B_RELOAD, 0.5);
+        assert!(g.players[0].reload_t > 0.0);
+        let before = g.players[0].gun().copied().unwrap();
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, before.ammo);
+        assert_eq!(g.players[0].scoped, 0);
+        input(&mut g, 0, 4.0);
+        let gun = g.players[0].gun().unwrap();
+        assert_eq!((gun.ammo_hand(0), gun.ammo_hand(1)), (15, 15));
+        assert_eq!(gun.ammo + gun.reserve, before.ammo + before.reserve);
+
+        let mut limited = Gun::new(by_id("twin_kestrel").unwrap());
+        limited.ammo = 2;
+        limited.left_ammo = 0;
+        limited.reserve = 3;
+        limited.reload();
+        assert_eq!(limited.ammo + limited.reserve, 5);
+        assert_eq!(limited.reserve, 0);
+        assert!(limited.ammo_hand(0) <= 15 && limited.ammo_hand(1) <= 15);
+    }
+
+    #[test]
+    fn dual_round_counts_survive_dropping_and_picking_up() {
+        let mut g = weapon_game("twin_mammoth");
+        input(&mut g, B_FIRE, TICK);
+        let before = g.players[0].gun().copied().unwrap();
+        g.drop_active(0);
+        assert!(g.players[0].sec.is_none());
+        assert_eq!(g.items.len(), 1);
+        g.players[0].st.pos = g.items[0].pos;
+        g.time += 2.0;
+        g.pickups();
+        let after = g.players[0].sec.as_ref().unwrap();
+        assert_eq!((after.w, after.ammo, after.left_ammo, after.reserve),
+                   (before.w, before.ammo, before.left_ammo, before.reserve));
+        assert!(g.items.is_empty());
+    }
+
+    #[test]
+    fn primary_pickup_cancels_previous_reload_aim_and_recoil() {
+        for id in ["kestrel", "twin_kestrel"] {
+            for reloading in [false, true] {
+                let mut g = weapon_game(id);
+                input(&mut g, B_FIRE | B_FIRE2, TICK);
+                if reloading {
+                    input(&mut g, B_RELOAD, 0.5);
+                    assert!(g.players[0].reload_t > 0.0);
+                }
+                let mut primary = Gun::new(by_id("sentinel").unwrap());
+                primary.ammo = 7;
+                g.drop_item(primary, g.players[0].st.pos, 0);
+                g.players[0].st.pos = g.items[0].pos;
+                g.pickups();
+                let p = &g.players[0];
+                assert_eq!(p.slot, 0);
+                assert_eq!(p.reload_t, 0.0);
+                assert_eq!(p.scoped, 0);
+                assert_eq!(p.shots, 0.0);
+                assert_eq!(p.hand_shots, [0.0; 2]);
+                assert!(p.cooldown >= 0.35);
+                input(&mut g, 0, 4.0);
+                let gun = g.players[0].gun().unwrap();
+                assert_eq!((gun.ammo, gun.reserve), (primary.ammo, primary.reserve),
+                           "pistol reload must not fill the newly picked-up rifle");
+            }
+        }
+    }
+
+    #[test]
+    fn dropping_fired_duals_delays_and_resets_the_next_weapon() {
+        let mut g = weapon_game("twin_kestrel");
+        g.players[0].prim = Some(Gun::new(by_id("sentinel").unwrap()));
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].hand_shots, [1.0; 2]);
+        assert_eq!(g.players[0].cooldown, 0.0);
+        g.drop_active(0);
+        let p = &g.players[0];
+        assert_eq!(p.slot, 0);
+        assert_eq!(p.shots, 0.0);
+        assert_eq!(p.hand_shots, [0.0; 2]);
+        assert!(p.cooldown >= 0.35);
+        let ammo = p.gun().unwrap().ammo;
+        input(&mut g, B_FIRE, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, ammo);
+        input(&mut g, B_FIRE, 0.4);
+        assert_eq!(g.players[0].gun().unwrap().ammo, ammo - 1);
+    }
+
+    #[test]
+    fn ordinary_guns_aim_while_held_and_release_or_reload_exits_aim() {
+        for id in ["kestrel", "sentinel", "longbow"] {
+            let mut g = weapon_game(id);
+            let speed = g.players[0].max_speed();
+            let ammo = g.players[0].gun().unwrap().ammo;
+            input(&mut g, B_FIRE2, TICK);
+            assert_eq!(g.players[0].scoped, 1, "{id}");
+            assert!(g.players[0].max_speed() < speed);
+            assert_eq!(g.players[0].gun().unwrap().ammo, ammo, "aiming must not shoot");
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].gun().unwrap().ammo, ammo - 1);
+            assert_eq!(shot_hands(&g), [1]);
+            input(&mut g, 0, 2.0);
+            assert_eq!(g.players[0].scoped, 0);
+            input(&mut g, B_FIRE2 | B_RELOAD, TICK);
+            assert_eq!(g.players[0].scoped, 0);
+            assert!(g.players[0].reload_t > 0.0);
+        }
+    }
+
+    #[test]
+    fn freeze_allows_aiming_but_neither_weapon_fires() {
+        for id in ["kestrel", "twin_kestrel"] {
+            let mut g = weapon_game(id);
+            g.phase = Phase::Freeze;
+            g.phase_t = 6.0;
+            let (tx, _rx) = mpsc::channel(16);
+            g.conns.insert(1, tx);
+            let p = &mut g.players[0];
+            let ammo = p.gun().unwrap().ammo;
+            p.cmds.push_back(Cmd { seq: 1, buttons: B_FIRE | B_FIRE2, yaw: 0.0, pitch: 0.0, dt: TICK, it: 0.0 });
+            g.tick();
+            assert_eq!(g.players[0].scoped, u8::from(id == "kestrel"));
+            assert_eq!(g.players[0].gun().unwrap().ammo, ammo);
+            assert!(shot_hands(&g).is_empty());
+        }
+    }
+
+    #[test]
+    fn weapon_metadata_and_snapshot_publish_dual_contract() {
+        let mut g = weapon_game("twin_kestrel");
+        let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
+        let twins = hello["weapons"].as_array().unwrap().iter().find(|w| w["id"] == "twin_kestrel").unwrap();
+        assert_eq!(twins["dual"], true);
+        assert_eq!(twins["ads"], false);
+        assert_eq!(twins["mag"], 30);
+        assert_eq!(twins["zoom"], 0.0);
+        let (tx, mut rx) = mpsc::channel(16);
+        g.conns.insert(1, tx);
+        g.conn_player.insert(1, g.players[0].id);
+        g.tick_n = 2;
+        g.broadcast();
+        let mut snapshot = None;
+        while let Ok(raw) = rx.try_recv() {
+            let message: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            if message["t"] == "s" { snapshot = Some(message); }
+        }
+        let snapshot = snapshot.unwrap();
+        assert_eq!(snapshot["me"]["am"], 30);
+        assert_eq!(snapshot["me"]["amL"], 15);
+        assert_eq!(snapshot["me"]["amR"], 15);
+    }
 
     fn play_round(g: &mut Game, winner: u8) {
         g.phase = Phase::Live;

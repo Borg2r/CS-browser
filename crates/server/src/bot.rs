@@ -97,7 +97,7 @@ fn shop(g: &mut Game, i: usize) {
         } else if money >= 2100 {
             list.push(["lynx", "cinder", "ram"][g.rng.below(3)]);
         } else if money >= 1000 && roll < 0.5 {
-            list.push(["viper", "mammoth", "hornet"][g.rng.below(3)]);
+            list.push(["viper", "mammoth", "hornet", "twin_kestrel", "twin_mammoth"][g.rng.below(5)]);
         }
     }
     list.push(if money >= 4500 { "vesthelm" } else { "vest" });
@@ -280,6 +280,7 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
         let reaction = 0.2 + 0.4 * (1.0 - bot.skill);
         let armed = wdef.class != C_KNIFE && g.players[i].gun().map(|x| x.ammo > 0).unwrap_or(false);
         if armed && !busy {
+            if wdef.ads && d > 8.0 { buttons |= B_FIRE2; }
             if off < 0.07 + 0.6 / d && bot.seen_t > reaction {
                 if wdef.auto {
                     bot.burst_t -= dt;
@@ -292,6 +293,7 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
                     bot.tap_t -= dt;
                     if bot.tap_t <= 0.0 {
                         buttons |= B_FIRE;
+                        if wdef.dual { buttons |= B_FIRE2; }
                         bot.tap_t = wdef.interval + g.rng.range(0.08, 0.22);
                     }
                 }
