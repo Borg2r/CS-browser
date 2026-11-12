@@ -1,33 +1,35 @@
 // HTML heads-up display: vitals, radar, kill feed, buy menu, weapon wheel, scoreboard.
+import { BuyMenu } from './buy.js';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const TEAM = ['', 'atk', 'def'];
 const SLOT_NAMES = ['PRIMARY', 'SIDEARM', 'KNIFE', 'FRAG', 'FLASH', 'SMOKE', 'CHARGE'];
-const GEAR = [
-  { id: 'vest', name: 'Kevlar Vest', price: 650 },
-  { id: 'vesthelm', name: 'Vest + Helmet', price: 1000 },
-  { id: 'kit', name: 'Defuse Kit', price: 200, team: 2 },
-];
-const CATS = [['Pistols', [1]], ['Shotguns', [2]], ['SMGs', [3]], ['Rifles', [4]], ['Snipers & MG', [5, 6]], ['Grenades & Gear', [7, 8, 9]]];
 
 export class Hud {
-  constructor(onBuy) {
+  constructor(onBuy, onBuyClosed) {
     this.onBuy = onBuy;
+    this.buyMenu = new BuyMenu($('buy'), onBuy, onBuyClosed);
     this.centerT = 0; this.hitT = 0; this.dmg = 0; this.flashT = 0; this.flashDur = 1;
-    this.buyOpen = false; this.buyCat = -1; this.wheelOpen = false; this.wheelVec = [0, 0]; this.wheelSel = -1;
+    this.wheelOpen = false; this.wheelVec = [0, 0]; this.wheelSel = -1;
     this.segs = SLOT_NAMES.map((n, i) => {
       const d = document.createElement('div'); d.className = 'seg';
       const a = i / 7 * Math.PI * 2;
       d.style.left = Math.sin(a) * 132 + 'px'; d.style.top = -Math.cos(a) * 132 + 'px';
       $('wheel').appendChild(d); return d;
     });
-    $('buy').addEventListener('click', e => {
-      const row = e.target.closest('.row'); if (row) this.buyKey(+row.dataset.k);
-    });
+  }
+
+  resetEffects() {
+    this.centerT = this.hitT = this.dmg = this.flashT = 0; this.flashDur = 1;
+    for (const id of ['hitmarker', 'damage', 'flash']) $(id).style.opacity = 0;
+    $('center').replaceChildren(); $('killfeed').replaceChildren();
+    this.buyMenu.pending = null; this.buyMenu.notice = ''; this.buyMenu.cache = '';
   }
 
   init(hello) {
+    this.resetEffects();
     this.weapons = hello.weapons; this.map = hello.map;
+    this.buyMenu.init(hello.weapons);
     // Static radar background.
     const c = document.createElement('canvas'); c.width = 200; c.height = 186;
     const g = c.getContext('2d'), s = Math.min(192 / (hello.map.w * 2), 178 / (hello.map.h * 2));
@@ -66,37 +68,12 @@ export class Hud {
   flash(dur) { this.flashT = Math.max(this.flashT, dur); this.flashDur = Math.max(1, this.flashT); }
 
   // ---- buy menu
-  buyItems(cat, team) {
-    const list = this.weapons.filter(w => CATS[cat][1].includes(w.cls) && (!w.team || w.team === team));
-    return cat === 5 ? list.concat(GEAR.filter(g => !g.team || g.team === team)) : list;
-  }
-  renderBuy(me, team) {
-    const el = $('buy'); el.classList.toggle('hidden', !this.buyOpen);
-    if (!this.buyOpen) return;
-    const key = `${this.buyCat}|${me.mo}|${team}`;
-    if (key === this.buyKeyCache) return;
-    this.buyKeyCache = key; this.buyTeam = team;
-    let h = `<h2><span>${this.buyCat < 0 ? 'BUY MENU' : esc(CATS[this.buyCat][0]).toUpperCase()}</span><span class="p" style="color:#8fe08a">$${me.mo}</span></h2>`;
-    if (this.buyCat < 0) {
-      CATS.forEach((c, i) => { h += `<div class="row" data-k="${i + 1}"><span class="k">${i + 1}</span>${esc(c[0])}</div>`; });
-    } else {
-      this.buyItems(this.buyCat, team).forEach((w, i) => {
-        const stat = w.mag ? (w.dual ? `DUAL · ${w.mag / 2} + ${w.mag / 2} rds` : `${w.dmg} dmg · ${w.mag} rds`) : '';
-        h += `<div class="row ${w.price > me.mo ? 'no' : ''}" data-k="${i + 1}"><span class="k">${i + 1}</span>${esc(w.name)}<span class="s">${stat}</span><span class="p">$${w.price}</span></div>`;
-      });
-    }
-    h += `<div class="row" data-k="0"><span class="k">0</span>${this.buyCat < 0 ? 'Close' : 'Back'}</div><div class="foot">Number keys or click · B closes</div>`;
-    el.innerHTML = h;
-  }
-  toggleBuy(open) { this.buyOpen = open; this.buyCat = -1; this.buyKeyCache = ''; }
-  buyKey(n) {
-    if (!this.buyOpen) return false;
-    if (n === 0) { if (this.buyCat < 0) this.toggleBuy(false); else { this.buyCat = -1; } this.buyKeyCache = ''; return true; }
-    if (this.buyCat < 0) { if (n <= CATS.length) { this.buyCat = n - 1; this.buyKeyCache = ''; } return true; }
-    const item = this.buyItems(this.buyCat, this.buyTeam)[n - 1];
-    if (item) { this.onBuy(item.id); this.toggleBuy(false); }
-    return true;
-  }
+  get buyOpen() { return this.buyMenu.open; }
+  get buyCat() { return this.buyMenu.category; }
+  buyItems(cat, team) { return this.buyMenu.items(cat, team); }
+  renderBuy(me, team, context) { this.buyMenu.render(me, team, context); }
+  toggleBuy(open) { this.buyMenu.toggle(open); }
+  buyKey(n) { return this.buyMenu.key(n); }
 
   // ---- weapon wheel
   owned(me) { return [me.pr >= 0, me.se >= 0, true, me.nd[0] > 0, me.nd[1] > 0, me.nd[2] > 0, me.bm]; }

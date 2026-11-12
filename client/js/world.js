@@ -3,6 +3,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { gunModel, handModel, weaponInfo } from './models.js';
 import { playerModel } from './characters.js';
 import { buildDesert } from './desert.js';
+import { locationTexture, locationTint, lightLocation, buildLocation } from './locations.js';
 
 const TIMBER_COLS = [0xb39770, 0x89775b, 0xb09b78, 0xb8a580, 0x9a8061, 0xc2a77b];
 
@@ -80,6 +81,24 @@ function box(w, h, d, color, x = 0, y = 0, z = 0) {
   return m;
 }
 
+// Only map-owned objects reach this helper. Player and weapon meshes deliberately
+// share immutable GPU assets, so removing those entities must not dispose them.
+function disposeMapGroup(group) {
+  const geometries = new Set(), materials = new Set(), textures = new Set();
+  group.traverse(o => {
+    if (o.geometry) geometries.add(o.geometry);
+    for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+      if (!m) continue;
+      materials.add(m);
+      for (const value of Object.values(m)) if (value?.isTexture) textures.add(value);
+    }
+    // InstancedMesh owns an additional instance-matrix GPU buffer.
+    if (o.isInstancedMesh) o.dispose();
+  });
+  textures.forEach(t => t.dispose()); materials.forEach(m => m.dispose());
+  geometries.forEach(g => g.dispose()); group.clear();
+}
+
 export class World {
   constructor(canvas) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -95,7 +114,8 @@ export class World {
     this.scene.fog = new THREE.Fog(0xd6c3a0, 78, 230);
     this.camera = new THREE.PerspectiveCamera(74, 1, 0.05, 400);
     this.camera.rotation.order = 'YXZ';
-    this.scene.add(new THREE.HemisphereLight(0xdbeef2, 0x887050, 1.7));
+    this.hemisphere = new THREE.HemisphereLight(0xdbeef2, 0x887050, 1.7);
+    this.scene.add(this.hemisphere);
     const sun = new THREE.DirectionalLight(0xffedcc, 3.0);
     this.sun = sun;
     sun.position.set(-42, 65, 26); sun.castShadow = true;
@@ -153,6 +173,12 @@ export class World {
   }
 
   buildMap(map) {
+    this.clearMap();
+    const theme = map.theme || 'desert';
+    this.map = map;
+    this.mapGroup = new THREE.Group(); this.mapGroup.name = `Map: ${map.name || map.id || 'Sirocco'}`;
+    this.scene.add(this.mapGroup);
+    lightLocation(this, theme);
     // Frame and light the whole playable town as its footprint changes.
     this.overviewRadius = Math.max(map.w, map.h) * 1.35;
     this.overviewHeight = Math.max(map.w, map.h) * 1.05;
@@ -169,6 +195,7 @@ export class World {
       const [x0, y0, z0, x1, y1, z1, mat, v] = b, o = buf[mat], t = tile[mat];
       col.set(mat === 2 ? TIMBER_COLS[v % 6] : 0xffffff);
       if (mat === 1) col.set([0xf0d9b0, 0xe7c99b, 0xd4b98b, 0xf2e2c4, 0xe5ceaa, 0xd5c3a0][v % 6]);
+      if (theme !== 'desert') col.set(locationTint(theme, mat, v, b));
       const face = (vs, n, uv) => {
         const base = o.p.length / 3;
         vs.forEach((p, k) => { o.p.push(...p); o.n.push(...n); o.u.push(uv[k][0] / t, uv[k][1] / t); o.c.push(col.r, col.g, col.b); });
@@ -183,15 +210,16 @@ export class World {
       side([x1, z1], [x1, z0], [1, 0, 0]); side([x0, z0], [x0, z1], [-1, 0, 0]);
     }
     buf.forEach((o, k) => {
+      if (!o.p.length) return;
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
       g.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(o.u, 2));
       g.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
       g.setIndex(o.i);
-      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: TEX[mats[k]](), vertexColors: true, roughness: .95, side: THREE.DoubleSide }));
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: theme === 'desert' ? TEX[mats[k]]() : locationTexture(theme, mats[k]), vertexColors: true, roughness: k === 2 && theme !== 'desert' ? .6 : .95, metalness: k === 2 && theme !== 'desert' ? .2 : 0, side: THREE.DoubleSide }));
       m.receiveShadow = true; m.castShadow = k !== 0;
-      this.scene.add(m);
+      this.mapGroup.add(m);
     });
     map.sites.forEach((s, k) => {
       const w = s[2] - s[0], d = s[3] - s[1];
@@ -202,9 +230,32 @@ export class World {
       }, false);
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
       m.rotation.x = -Math.PI / 2; m.position.set((s[0] + s[2]) / 2, 0.02, (s[1] + s[3]) / 2);
-      this.scene.add(m);
+      this.mapGroup.add(m);
     });
-    buildDesert(this.scene, map);
+    if (theme === 'desert') buildDesert(this.mapGroup, map);
+    else buildLocation(this.mapGroup, map);
+  }
+
+  clearMap() {
+    if (this.mapGroup) {
+      this.scene.remove(this.mapGroup); disposeMapGroup(this.mapGroup); this.mapGroup = null;
+    }
+    for (const model of this.players.values()) this.scene.remove(model.root);
+    this.players.clear();
+    for (const store of [this.items, this.nades]) {
+      for (const model of store.values()) this.scene.remove(model);
+      store.clear();
+    }
+    this.setSmokes([]);
+    for (const f of this.fx) {
+      this.scene.remove(f.o);
+      if (f.dispose) { f.o.geometry.dispose(); if (f.o.material !== this.tracerMat) f.o.material.dispose(); }
+    }
+    this.fx.length = 0; this.bomb.visible = false;
+    this.handKick.fill(0); this.flashTimers.fill(0); this.vmKick = this.vmAim = 0;
+    this.muzzles.forEach(m => { m.visible = false; });
+    // Render lists otherwise retain removed map objects until the next frame.
+    this.renderer.renderLists.dispose();
   }
 
   // ---- other players
@@ -276,7 +327,10 @@ export class World {
     this.syncSimple(this.nades, list, e => gunModel(weapons[e[1]]));
   }
   setSmokes(list) {
-    while (this.smokes.length > list.length) this.scene.remove(this.smokes.pop());
+    while (this.smokes.length > list.length) {
+      const smoke = this.smokes.pop(); this.scene.remove(smoke);
+      smoke.children.forEach(sprite => sprite.material.dispose());
+    }
     list.forEach((s, k) => {
       let g = this.smokes[k];
       if (!g) {

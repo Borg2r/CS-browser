@@ -3,7 +3,7 @@ use crate::bot::{self, Bot, Difficulty};
 use crate::nav::Nav;
 use serde::Deserialize;
 use serde_json::json;
-use sim::map::{map, Map};
+use sim::map::{map, map_by_id, Map, MapId};
 use sim::physics::*;
 use sim::weapons::*;
 use sim::V3;
@@ -27,6 +27,18 @@ const START_MONEY: u32 = 800;
 const MAX_MONEY: u32 = 16000;
 const SMOKE_RADIUS: f32 = 3.5;
 
+// Keep serialization dependencies out of the shared WASM simulation crate.
+fn deserialize_map<'de, D: serde::Deserializer<'de>>(d: D) -> Result<MapId, D::Error> {
+    let id = String::deserialize(d)?;
+    MapId::from_id(&id).ok_or_else(|| serde::de::Error::custom("unknown map"))
+}
+
+fn deserialize_optional_map<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<MapId>, D::Error> {
+    Option::<String>::deserialize(d)?.map(|id| {
+        MapId::from_id(&id).ok_or_else(|| serde::de::Error::custom("unknown map"))
+    }).transpose()
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "t")]
 pub enum ClientMsg {
@@ -36,9 +48,13 @@ pub enum ClientMsg {
         team: u8,
         #[serde(default)]
         difficulty: Option<Difficulty>,
+        #[serde(default, deserialize_with = "deserialize_optional_map")]
+        map: Option<MapId>,
     },
     #[serde(rename = "set_difficulty")]
     SetDifficulty { difficulty: Difficulty },
+    #[serde(rename = "set_map")]
+    SetMap { #[serde(deserialize_with = "deserialize_map")] map: MapId },
     #[serde(rename = "in")]
     Input {
         s: u32,
@@ -48,6 +64,8 @@ pub enum ClientMsg {
         d: f32,
         #[serde(default)]
         it: f64,
+        #[serde(default, deserialize_with = "deserialize_optional_map")]
+        map: Option<MapId>,
     },
     #[serde(rename = "sel")]
     Select { slot: u8 },
@@ -446,6 +464,7 @@ impl Game {
         json!({
             "t": "settings",
             "difficulty": self.difficulty.id(),
+            "map": self.map.id.id(),
             "host": host.map(|p| p.id),
             "hostName": host.map(|p| p.name.as_str()),
             "canChange": host.is_some_and(|p| p.conn == Some(conn)),
@@ -469,6 +488,43 @@ impl Game {
         }
         self.difficulty = difficulty;
         self.broadcast_settings();
+    }
+
+    fn set_map(&mut self, conn: u32, map: MapId) {
+        if !self.host().is_some_and(|p| p.conn == Some(conn)) {
+            self.send(conn, json!({
+                "t": "settings_error",
+                "m": "Only the match host can change the map.",
+            }).to_string());
+            self.send(conn, self.settings(conn));
+            return;
+        }
+        if self.map.id != map {
+            self.change_map(map);
+        }
+        self.broadcast_settings();
+    }
+
+    fn change_map(&mut self, map: MapId) {
+        self.map = map_by_id(map);
+        self.nav = Nav::build(self.map);
+        // Nothing from the old arena may replay into the fresh match, including
+        // halftime swaps, private hit events or lag-compensation positions.
+        self.swap_pending = false;
+        self.events.clear();
+        self.private.clear();
+        for p in &mut self.players {
+            p.cmds.clear();
+            p.budget = 0.0;
+            p.interp_time = self.time;
+            p.hist.clear();
+        }
+        self.reset_match();
+        self.roster_dirty = true;
+        let hello = self.hello();
+        for &conn in self.conns.keys() {
+            self.send(conn, hello.clone());
+        }
     }
 
     // ---------------------------------------------------------------- lobby
@@ -499,9 +555,11 @@ impl Game {
     fn on_msg(&mut self, conn: u32, msg: ClientMsg) {
         let pi = self.conn_player.get(&conn).and_then(|id| self.idx(*id));
         match (msg, pi) {
-            (ClientMsg::Join { name, team, difficulty }, None) => self.join(conn, name, team, difficulty),
+            (ClientMsg::Join { name, team, difficulty, map }, None) => self.join(conn, name, team, difficulty, map),
             (ClientMsg::SetDifficulty { difficulty }, _) => self.set_difficulty(conn, difficulty),
-            (ClientMsg::Input { s, b, y, p, d, it }, Some(i)) => {
+            (ClientMsg::SetMap { map }, _) => self.set_map(conn, map),
+            (ClientMsg::Input { s, b, y, p, d, it, map }, Some(i)) => {
+                if map.is_some_and(|id| id != self.map.id) { return; }
                 let q = &mut self.players[i].cmds;
                 if q.len() < 64 {
                     q.push_back(Cmd { seq: s, buttons: b, yaw: y, pitch: p, dt: d, it });
@@ -525,7 +583,7 @@ impl Game {
         }
     }
 
-    fn join(&mut self, conn: u32, name: String, want: u8, difficulty: Option<Difficulty>) {
+    fn join(&mut self, conn: u32, name: String, want: u8, difficulty: Option<Difficulty>, map: Option<MapId>) {
         let mut name: String = name.chars().filter(|c| !c.is_control()).take(16).collect();
         if name.trim().is_empty() {
             name = "Player".into();
@@ -564,7 +622,10 @@ impl Game {
             if let Some(difficulty) = difficulty {
                 self.difficulty = difficulty;
             }
-            self.reset_match();
+            match map {
+                Some(map) if map != self.map.id => self.change_map(map),
+                _ => self.reset_match(),
+            }
         } else if self.phase == Phase::Freeze {
             let i = self.players.len() - 1;
             let n = self.rng.below(64);
@@ -1523,7 +1584,17 @@ impl Game {
                        "dmg": w.dmg, "dual": w.dual, "ads": w.ads})
             })
             .collect();
-        json!({"t": "hello", "map": {"name": "Sirocco", "theme": "desert", "boxes": boxes, "sites": sites, "w": self.map.w, "h": self.map.h},
+        let metadata = |id: MapId| json!({
+            "id": id.id(), "index": id.index(), "name": id.name(),
+            "theme": id.theme(), "description": id.description(),
+        });
+        let maps: Vec<_> = MapId::ALL.into_iter().map(metadata).collect();
+        let mut map = metadata(self.map.id);
+        map["boxes"] = json!(boxes);
+        map["sites"] = json!(sites);
+        map["w"] = json!(self.map.w);
+        map["h"] = json!(self.map.h);
+        json!({"t": "hello", "map": map, "maps": maps,
                "weapons": weapons, "win": WIN_ROUNDS, "teamSize": self.team_size})
         .to_string()
     }
@@ -1581,8 +1652,13 @@ impl Game {
             Phase::End => 2,
             Phase::MatchEnd => 3,
         };
-        let _ = write!(c, "\"tm\":{:.3},\"ph\":{},\"pt\":{:.1},\"sc\":[{},{}],\"rd\":{},",
-            self.time, ph, self.phase_t.max(0.0), self.score[0], self.score[1], self.round);
+        let buy_seconds = match self.phase {
+            Phase::Freeze => self.phase_t.max(0.0) + BUY_TIME,
+            Phase::Live => (BUY_TIME - self.live_elapsed).max(0.0),
+            _ => 0.0,
+        };
+        let _ = write!(c, "\"map\":\"{}\",\"buySeconds\":{:.1},\"tm\":{:.3},\"ph\":{},\"pt\":{:.1},\"sc\":[{},{}],\"rd\":{},",
+            self.map.id.id(), buy_seconds, self.time, ph, self.phase_t.max(0.0), self.score[0], self.score[1], self.round);
         match &self.planted {
             Some(b) => {
                 let _ = write!(c, "\"bomb\":[{:.2},{:.2},{:.2},{:.1},{}],", b.pos[0], b.pos[1], b.pos[2], b.timer, b.site);
@@ -1656,7 +1732,7 @@ mod tests {
     }
 
     fn join_player(g: &mut Game, conn: u32, name: &str, difficulty: Option<Difficulty>) {
-        g.handle(Incoming::Msg(conn, ClientMsg::Join { name: name.into(), team: ATK, difficulty }));
+        g.handle(Incoming::Msg(conn, ClientMsg::Join { name: name.into(), team: ATK, difficulty, map: None }));
     }
 
     fn messages(rx: &mut mpsc::Receiver<String>) -> Vec<serde_json::Value> {
@@ -1677,7 +1753,7 @@ mod tests {
         let mut rx = connect_player(&mut g, 50);
         let initial = messages(&mut rx);
         assert_eq!(initial[0]["t"], "hello");
-        assert_eq!(initial[1], json!({"t": "settings", "difficulty": "medium", "host": null,
+        assert_eq!(initial[1], json!({"t": "settings", "difficulty": "medium", "map": "sirocco", "host": null,
                                     "hostName": null, "canChange": false}));
         join_player(&mut g, 50, "Host", None);
         let settings = latest_settings(&mut rx);
@@ -1761,7 +1837,7 @@ mod tests {
         g.handle(Incoming::Disconnect(10));
         assert!(g.host().is_none());
         assert_eq!(latest_settings(&mut observer),
-                   json!({"t": "settings", "difficulty": "expert", "host": null,
+                   json!({"t": "settings", "difficulty": "expert", "map": "sirocco", "host": null,
                           "hostName": null, "canChange": false}));
     }
 
@@ -1800,6 +1876,168 @@ mod tests {
             assert!(serde_json::from_str::<ClientMsg>(&change).is_err());
         }
         let invalid_join = json!({"t": "join", "name": "Host", "team": 1, "difficulty": "impossible"}).to_string();
+        assert!(serde_json::from_str::<ClientMsg>(&invalid_join).is_err());
+    }
+
+    #[test]
+    fn map_preferences_apply_only_when_starting_an_empty_lobby() {
+        let mut g = Game::new();
+        let mut host = connect_player(&mut g, 50);
+        g.handle(Incoming::Msg(50, ClientMsg::Join {
+            name: "Host".into(), team: ATK, difficulty: Some(Difficulty::Hard),
+            map: Some(MapId::Norheim),
+        }));
+        assert_eq!(g.map.id, MapId::Norheim);
+        assert_eq!(latest_settings(&mut host)["map"], "norheim");
+        let host_id = g.host().unwrap().id;
+        let mut guest = connect_player(&mut g, 30);
+        g.handle(Incoming::Msg(30, ClientMsg::Join {
+            name: "Guest".into(), team: DEF, difficulty: Some(Difficulty::Easy),
+            map: Some(MapId::Dockyard),
+        }));
+        assert_eq!(g.map.id, MapId::Norheim);
+        assert_eq!(g.difficulty, Difficulty::Hard);
+        assert_eq!(latest_settings(&mut guest)["host"], host_id);
+        g.handle(Incoming::Disconnect(50));
+        g.handle(Incoming::Disconnect(30));
+        let mut next = connect_player(&mut g, 60);
+        join_player(&mut g, 60, "No preference", None);
+        assert_eq!(latest_settings(&mut next)["map"], "norheim");
+        g.handle(Incoming::Disconnect(60));
+        let mut last = connect_player(&mut g, 70);
+        g.handle(Incoming::Msg(70, ClientMsg::Join {
+            name: "Next host".into(), team: ATK, difficulty: None,
+            map: Some(MapId::Meridian),
+        }));
+        assert_eq!(latest_settings(&mut last)["map"], "meridian");
+    }
+
+    #[test]
+    fn map_changes_require_the_host_and_host_transfer_keeps_the_map() {
+        let mut g = Game::new();
+        let mut host = connect_player(&mut g, 50);
+        join_player(&mut g, 50, "Host", None);
+        let mut guest = connect_player(&mut g, 30);
+        let mut observer = connect_player(&mut g, 90);
+        for (conn, rx) in [(30, &mut guest), (90, &mut observer)] {
+            messages(rx);
+            g.handle(Incoming::Msg(conn, ClientMsg::SetMap { map: MapId::Dockyard }));
+            let rejected = messages(rx);
+            assert_eq!(rejected[0]["t"], "settings_error");
+            assert_eq!(rejected[1]["map"], "sirocco");
+            assert_eq!(g.map.id, MapId::Sirocco);
+        }
+        join_player(&mut g, 30, "Guest", None);
+        messages(&mut guest);
+        g.handle(Incoming::Msg(30, ClientMsg::SetMap { map: MapId::Meridian }));
+        assert_eq!(messages(&mut guest)[0]["t"], "settings_error");
+        g.handle(Incoming::Msg(50, ClientMsg::SetMap { map: MapId::Dockyard }));
+        assert_eq!(g.map.id, MapId::Dockyard);
+        assert_eq!(latest_settings(&mut host)["map"], "dockyard");
+        g.handle(Incoming::Disconnect(50));
+        assert_eq!(latest_settings(&mut guest)["canChange"], true);
+        assert_eq!(g.map.id, MapId::Dockyard);
+        g.handle(Incoming::Msg(30, ClientMsg::SetMap { map: MapId::Meridian }));
+        assert_eq!(g.map.id, MapId::Meridian);
+        assert_eq!(latest_settings(&mut observer)["map"], "meridian");
+    }
+
+    #[test]
+    fn changing_maps_resets_combat_and_announces_geometry_before_new_state() {
+        let mut g = Game::new();
+        let mut host = connect_player(&mut g, 50);
+        join_player(&mut g, 50, "Host", Some(Difficulty::Expert));
+        let mut guest = connect_player(&mut g, 30);
+        join_player(&mut g, 30, "Guest", None);
+        let mut observer = connect_player(&mut g, 90);
+        let identities: Vec<_> = g.players.iter().map(|p| (p.id, p.team, p.conn)).collect();
+        let host_id = g.host().unwrap().id;
+        g.phase = Phase::Live;
+        g.phase_t = 30.0;
+        g.live_elapsed = 85.0;
+        g.score = [6, 8];
+        g.round = 15;
+        g.swap_pending = true;
+        g.planted = Some(Planted { pos: [0.0; 3], timer: 10.0, site: 0 });
+        g.smokes.push(Smoke { pos: [0.0; 3], t: 20.0 });
+        g.nades.push(Nade { id: 1000, kind: FRAG, pos: [0.0; 3], vel: [0.0; 3], fuse: 1.0, owner: host_id, team: ATK });
+        g.drop_item(Gun::new(PISTOL_ATK), [0.0; 3], 0);
+        g.events.push(json!({"t": "stale_shot"}).to_string());
+        g.private.push((host_id, json!({"t": "stale_hit"}).to_string()));
+        for p in &mut g.players {
+            p.money = 16000;
+            p.kills = 10;
+            p.deaths = 5;
+            p.cmds.push_back(Cmd { seq: 80, buttons: B_FIRE, yaw: 1.0, pitch: 0.0, dt: TICK, it: 0.0 });
+            p.budget = 0.2;
+            p.ack = 77;
+            p.hist.push_back((0.0, [0.0; 3], false));
+        }
+        messages(&mut host);
+        messages(&mut guest);
+        messages(&mut observer);
+        g.handle(Incoming::Msg(50, ClientMsg::SetMap { map: MapId::Meridian }));
+        assert_eq!(g.map.id, MapId::Meridian);
+        assert_eq!(g.host().unwrap().id, host_id);
+        assert_eq!(g.difficulty, Difficulty::Expert);
+        assert_eq!(g.players.iter().map(|p| (p.id, p.team, p.conn)).collect::<Vec<_>>(), identities);
+        assert!(g.phase == Phase::Freeze);
+        assert_eq!(g.round, 1);
+        assert_eq!(g.score, [0, 0]);
+        assert!(!g.swap_pending);
+        assert!(g.items.is_empty() && g.nades.is_empty() && g.smokes.is_empty() && g.planted.is_none());
+        assert!(g.private.is_empty());
+        for p in &g.players {
+            assert!(p.alive && p.hp == 100);
+            assert_eq!((p.money, p.kills, p.deaths), (START_MONEY, 0, 0));
+            assert!(p.cmds.is_empty() && p.hist.is_empty());
+            assert_eq!(p.budget, 0.0);
+            assert_eq!(p.ack, 77);
+            assert_eq!(p.buttons, 0);
+            assert!(g.map.spawns[(p.team - 1) as usize].contains(&p.xz()));
+            assert!(!collides(g.map, &p.st.pos, H_STAND));
+        }
+        g.broadcast();
+        for rx in [&mut host, &mut guest, &mut observer] {
+            let sent = messages(rx);
+            assert_eq!(sent[0]["t"], "hello");
+            assert_eq!(sent[0]["map"]["id"], "meridian");
+            assert_eq!(sent[0]["map"]["index"], MapId::Meridian.index());
+            assert_eq!(sent[0]["maps"].as_array().unwrap().len(), MapId::ALL.len());
+            assert_eq!(sent[1]["t"], "settings");
+            assert_eq!(sent[1]["map"], "meridian");
+            let snapshot = sent.iter().find(|m| m["t"] == "s").unwrap();
+            assert_eq!(snapshot["map"], "meridian");
+            assert_eq!(snapshot["rd"], 1);
+            assert_eq!(snapshot["buySeconds"], FREEZE_TIME + BUY_TIME);
+            assert!(sent.iter().all(|m| !m.to_string().contains("stale_")));
+        }
+        let i = g.idx(host_id).unwrap();
+        g.handle(Incoming::Msg(50, ClientMsg::Input {
+            s: 81, b: B_FIRE, y: 0.0, p: 0.0, d: TICK, it: 0.0, map: Some(MapId::Sirocco),
+        }));
+        assert!(g.players[i].cmds.is_empty(), "buffered movement from the old map must be ignored");
+        g.handle(Incoming::Msg(50, ClientMsg::Input {
+            s: 82, b: 0, y: 0.0, p: 0.0, d: TICK, it: 0.0, map: Some(MapId::Meridian),
+        }));
+        assert_eq!(g.players[i].cmds.len(), 1);
+    }
+
+    #[test]
+    fn map_protocol_rejects_unknown_ids_without_defaulting() {
+        for id in MapId::ALL {
+            let change = json!({"t": "set_map", "map": id.id()}).to_string();
+            assert!(matches!(serde_json::from_str::<ClientMsg>(&change).unwrap(),
+                             ClientMsg::SetMap { map } if map == id));
+            let join = json!({"t": "join", "name": "Host", "team": 1, "map": id.id()}).to_string();
+            assert!(matches!(serde_json::from_str::<ClientMsg>(&join).unwrap(),
+                             ClientMsg::Join { map: Some(map), .. } if map == id));
+        }
+        for invalid in [json!("missing"), json!("Sirocco"), json!(3), json!(null)] {
+            let change = json!({"t": "set_map", "map": invalid}).to_string();
+            assert!(serde_json::from_str::<ClientMsg>(&change).is_err());
+        }
+        let invalid_join = json!({"t": "join", "name": "Host", "team": 1, "map": "missing"}).to_string();
         assert!(serde_json::from_str::<ClientMsg>(&invalid_join).is_err());
     }
 

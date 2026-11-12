@@ -1,8 +1,8 @@
 //! Geometry-level regression tests for spawn protection, independent of the
 //! authored tile layout. Both directions matter: penetration uses the first wall.
-use sim::map::Map;
+use sim::map::{map_by_id, Map, MapId};
 use sim::physics::{
-    collides, ray_world, ray_world_hit, step, PState, B_JUMP, EYE_STAND, H_CROUCH, H_STAND,
+    collides, ray_world, ray_world_hit, step, PState, B_JUMP, EYE_STAND, HALF_W, H_CROUCH, H_STAND,
 };
 use sim::V3;
 
@@ -27,9 +27,7 @@ fn shot_reaches(map: &Map, origin: V3, target: V3) -> (bool, bool) {
     (distance < wall_distance, distance < stop)
 }
 
-#[test]
-fn every_opposing_spawn_pair_blocks_direct_and_penetrating_shots() {
-    let map = Map::build();
+fn exposed_spawn_pairs(map: &Map) -> (usize, usize) {
     assert!(map.spawns.iter().all(|team| !team.is_empty()));
     let mut directly_exposed = 0;
     let mut bullet_reachable = 0;
@@ -37,20 +35,46 @@ fn every_opposing_spawn_pair_blocks_direct_and_penetrating_shots() {
         for b in &map.spawns[1] {
             let a = [a[0], EYE_STAND, a[1]];
             let b = [b[0], EYE_STAND, b[1]];
-            let forward = shot_reaches(&map, a, b);
-            let reverse = shot_reaches(&map, b, a);
+            let forward = shot_reaches(map, a, b);
+            let reverse = shot_reaches(map, b, a);
             directly_exposed += usize::from(forward.0 || reverse.0);
             bullet_reachable += usize::from(forward.1 || reverse.1);
         }
     }
-    println!("{} opposing spawn pairs: {directly_exposed} direct sightlines, {bullet_reachable} sniper-reachable pairs",
-        map.spawns[0].len() * map.spawns[1].len());
-    assert_eq!(
-        directly_exposed, 0, "opposing spawns have direct standing sightlines"
-    );
-    assert_eq!(
-        bullet_reachable, 0, "a sniper can penetrate between opposing spawns"
-    );
+    (directly_exposed, bullet_reachable)
+}
+
+#[test]
+fn every_map_blocks_direct_and_penetrating_shots_between_all_spawn_pairs() {
+    let mut failures = Vec::new();
+    for id in MapId::ALL {
+        let map = map_by_id(id);
+        let (direct, penetrating) = exposed_spawn_pairs(map);
+        println!("{}: {} opposing spawn pairs, {direct} direct sightlines, {penetrating} sniper-reachable pairs",
+            id.id(), map.spawns[0].len() * map.spawns[1].len());
+        if direct != 0 || penetrating != 0 {
+            failures.push(format!("{}: {direct} direct / {penetrating} penetrating spawn pairs", id.id()));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn every_maps_spawn_markers_fit_distinct_standing_players() {
+    for id in MapId::ALL {
+        let map = map_by_id(id);
+        for (team, spawns) in map.spawns.iter().enumerate() {
+            assert!(spawns.len() >= 5, "{} team {team}: fewer than five spawn markers", id.id());
+            for (index, &spawn) in spawns.iter().enumerate() {
+                assert!(walk_clear(map, spawn, spawn), "{}: obstructed spawn {spawn:?}", id.id());
+                for other in &spawns[index + 1..] {
+                    let separated = (spawn[0] - other[0]).abs() >= 2.0 * HALF_W
+                        || (spawn[1] - other[1]).abs() >= 2.0 * HALF_W;
+                    assert!(separated, "{}: overlapping spawn markers {spawn:?} / {other:?}", id.id());
+                }
+            }
+        }
+    }
 }
 
 // A nearby sample must be reachable on foot, rather than lying on the other side
@@ -140,13 +164,11 @@ fn stances(map: &Map, point: [f32; 2]) -> [PState; 3] {
     [standing, crouching, apex]
 }
 
-#[test]
-fn spawn_rooms_block_crouching_standing_and_jumping_shots() {
-    let map = Map::build();
-    let samples = [spawn_room_samples(&map, 0), spawn_room_samples(&map, 1)];
+fn check_room_shots(map: &Map) -> Result<(), String> {
+    let samples = [spawn_room_samples(map, 0), spawn_room_samples(map, 1)];
     let poses = samples.each_ref().map(|team| {
         team.iter()
-            .flat_map(|&point| stances(&map, point))
+            .flat_map(|&point| stances(map, point))
             .collect::<Vec<_>>()
     });
     let mut checked = 0;
@@ -170,20 +192,27 @@ fn spawn_rooms_block_crouching_standing_and_jumping_shots() {
                         victim.pos[1] + y,
                         victim.pos[2] - dx / distance * side,
                     ];
-                    let (visible, penetrable) = shot_reaches(&map, origin, target);
-                    assert!(
-                        !visible,
-                        "direct spawn-room sightline: team {team}, {origin:?} -> {target:?}"
-                    );
-                    assert!(
-                        !penetrable,
-                        "sniper penetrates spawn protection: team {team}, {origin:?} -> {target:?}"
-                    );
+                    let (visible, penetrable) = shot_reaches(map, origin, target);
+                    if visible || penetrable {
+                        return Err(format!(
+                            "{}: unsafe spawn-room ray, direct={visible}, penetrating={penetrable}, team {team}, {origin:?} -> {target:?}",
+                            map.id.id()
+                        ));
+                    }
                     checked += 1;
                 }
             }
         }
     }
-    println!("{} attacker / {} defender room samples: {checked} blocked stance and target-edge rays",
-        samples[0].len(), samples[1].len());
+    println!("{}: {} attacker / {} defender room samples, {checked} blocked stance and target-edge rays",
+        map.id.id(), samples[0].len(), samples[1].len());
+    Ok(())
+}
+
+#[test]
+fn every_maps_spawn_rooms_block_crouching_standing_and_jumping_shots() {
+    let failures = MapId::ALL.into_iter()
+        .filter_map(|id| check_room_shots(map_by_id(id)).err())
+        .collect::<Vec<_>>();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

@@ -8,10 +8,12 @@ const $ = id => document.getElementById(id);
 const canvas = $('view');
 const world = new World(canvas);
 const sfx = new Sfx();
-const hud = new Hud(item => send({ t: 'buy', item }));
+const hud = new Hud(item => send({ t: 'buy', item }), () => {
+  keys.clear(); mouseB = 0; if (joined) captureMouse();
+});
 const settings = new BotSettings(difficulty => send({ t: 'set_difficulty', difficulty }), () => {
   if (joined) captureMouse();
-});
+}, map => send({ t: 'set_map', map }));
 
 const B = { FWD: 1, BACK: 2, LEFT: 4, RIGHT: 8, JUMP: 16, CROUCH: 32, WALK: 64, FIRE: 128, RELOAD: 256, USE: 512, FIRE2: 1024 };
 const FREEZE_MASK = ~(B.FWD | B.BACK | B.LEFT | B.RIGHT | B.JUMP);
@@ -41,21 +43,46 @@ const applySettings = () => {
 $('sens').oninput = $('vol').oninput = $('name').onchange = applySettings; applySettings();
 
 // ---- prediction module (same Rust movement code as the server)
-let wasm = null;
+let wasm = null, predictedMap = null;
 let loadingError = '';
 let serverReady = false;
 function updateReady() {
-  const ready = !!wasm && serverReady && !!settings.state && ws?.readyState === WebSocket.OPEN;
+  const ready = !!wasm && predictedMap === hello?.map.id && serverReady && !!settings.state && ws?.readyState === WebSocket.OPEN;
   for (const button of document.querySelectorAll('.teams button')) button.disabled = !ready;
   $('status').textContent = loadingError || (ready ? 'Connected — pick a side' : !wasm ? 'Loading game…' : 'Connecting to server…');
+}
+function selectPredictionMap() {
+  if (!wasm || !hello || predictedMap === hello.map.id) return;
+  if (wasm.select_map(hello.map.index) !== 1) throw new Error('Unknown prediction map');
+  predictedMap = hello.map.id;
+}
+function installMap(message) {
+  const changed = hello?.map.id !== message.map.id;
+  hello = message; weapons = message.weapons;
+  settings.setMaps(message.maps);
+  if (changed) {
+    keys.clear(); mouseB = 0; pending = []; snaps = []; latest = me = pred = null;
+    wasAlive = false; resetView = true; timeOffset = -Infinity; err = [0, 0, 0];
+    aimBlend = punch = punchYaw = shotsC = 0; recoilWeapon = -1;
+    handShots.fill(0); handSince.fill(9);
+    hud.toggleBuy(false); if (hud.wheelOpen) hud.closeWheel();
+    world.buildMap(message.map); hud.init(message);
+    $('killfeed').replaceChildren(); $('center').textContent = '';
+    selectPredictionMap();
+  }
+  $('map-name').textContent = message.map.name;
+  serverReady = true; updateReady();
 }
 async function loadPrediction() {
   try {
     const response = await fetch('predict.wasm');
     if (!response.ok) throw new Error(`Prediction download: HTTP ${response.status}`);
     wasm = (await WebAssembly.instantiate(await response.arrayBuffer())).instance.exports;
+    if (typeof wasm.select_map !== 'function') throw new Error('Prediction module needs an update');
+    selectPredictionMap();
   } catch (error) {
     loadingError = 'Could not load the game. Reload the page to try again.';
+    wasm = null;
     console.error(error);
   }
   updateReady();
@@ -90,7 +117,7 @@ function connect() {
     serverReady = false;
     settings.disconnect();
     updateReady();
-    joined = false; $('menu').classList.remove('hidden'); $('hud').classList.add('hidden');
+    joined = false; latest = me = pred = null; snaps = []; pending = []; hud.toggleBuy(false); hud.resetEffects(); $('menu').classList.remove('hidden'); $('hud').classList.add('hidden');
     if (!loadingError) $('status').textContent = 'Disconnected — reconnecting…';
     document.exitPointerLock?.();
     setTimeout(connect, 2000);
@@ -98,20 +125,16 @@ function connect() {
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     switch (m.t) {
-      case 's': onSnap(m); break;
+      case 's': if (m.map === hello?.map.id) onSnap(m); break;
       case 'e': m.ev.forEach(onEvent); break;
       case 'r': roster = new Map(m.pl.map(p => [p.id, p])); break;
       case 'settings': settings.update(m); updateReady(); break;
       case 'settings_error': settings.error(m.m); break;
-      case 'hello':
-        if (!hello) { hello = m; weapons = m.weapons; world.buildMap(m.map); hud.init(m); }
-        $('map-name').textContent = m.map.name || 'Sirocco';
-        serverReady = true;
-        updateReady();
-        break;
+      case 'hello': installMap(m); break;
       case 'joined':
-        myId = m.id; joined = true; snaps = []; pending = []; pred = null; wasAlive = false; resetView = true;
+        myId = m.id; joined = true; snaps = []; pending = []; latest = me = pred = null; wasAlive = false; resetView = true;
         timeOffset = -Infinity;
+        hud.resetEffects();
         aimBlend = 0;
         $('menu').classList.add('hidden'); $('hud').classList.remove('hidden');
         break;
@@ -125,7 +148,7 @@ for (const b of document.querySelectorAll('.teams button')) {
   b.onclick = () => {
     sfx.unlock(); applySettings();
     if (!hello || !wasm) { $('status').textContent = 'Still loading…'; return; }
-    send({ t: 'join', name: $('name').value.trim() || 'Player', team: +b.dataset.team, difficulty: settings.joinPreference });
+    send({ t: 'join', name: $('name').value.trim() || 'Player', team: +b.dataset.team, difficulty: settings.joinPreference, map: settings.joinMapPreference });
     captureMouse();
   };
 }
@@ -249,14 +272,14 @@ document.addEventListener('mouseup', e => {
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('pointerlockchange', () => { if (!locked()) { keys.clear(); mouseB = 0; } });
 document.addEventListener('mousemove', e => {
-  if (!locked() || settings.open) return;
+  if (!locked() || settings.open || hud.buyOpen) return;
   const mx = Math.max(-400, Math.min(400, e.movementX)), my = Math.max(-400, Math.min(400, e.movementY));
   if (hud.wheelOpen) { hud.moveWheel(mx, my); return; }
   const k = 0.0022 * sens * (fov / 74);
   yaw -= mx * k; pitch = Math.max(-1.55, Math.min(1.55, pitch - my * k));
 });
 document.addEventListener('wheel', e => {
-  if (!locked() || settings.open || !me || !wasAlive) return;
+  if (!locked() || settings.open || hud.buyOpen || !me || !wasAlive) return;
   const own = hud.owned(me); let s = me.sl;
   for (let i = 0; i < 7; i++) { s = (s + (e.deltaY > 0 ? 1 : 6)) % 7; if (own[s]) break; }
   send({ t: 'sel', slot: s });
@@ -274,14 +297,28 @@ document.addEventListener('keydown', e => {
     if (e.code === 'Enter' || e.code === 'Escape') { chatOpen = false; $('chatbox').value = ''; $('chatbox').classList.add('hidden'); $('chatbox').blur(); e.preventDefault(); }
     return;
   }
+  if (hud.buyOpen) {
+    if (e.repeat) return;
+    const digit = /^(Digit|Numpad)(\d)$/.exec(e.code);
+    if (digit) { e.preventDefault(); hud.buyKey(+digit[2]); sfx.ui(true); }
+    else if (e.code === 'KeyB' || e.code === 'Escape') {
+      e.preventDefault(); hud.toggleBuy(false); keys.clear(); mouseB = 0;
+      if (e.code === 'KeyB') captureMouse();
+    } else if (e.code === 'F2') { e.preventDefault(); openSettings(); }
+    return;
+  }
   if (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow') || (e.ctrlKey && e.code !== 'KeyR')) e.preventDefault();
   if (e.repeat) return;
   keys.add(e.code);
-  const digit = /^(Digit|Numpad)(\d)$/.exec(e.code);
-  if (hud.buyOpen && digit) { hud.buyKey(+digit[2]); sfx.ui(true); return; }
   switch (e.code) {
     case 'F2': e.preventDefault(); openSettings(); break;
-    case 'KeyB': if (me?.cb || hud.buyOpen) { hud.toggleBuy(!hud.buyOpen); sfx.ui(true); } else sfx.ui(false); break;
+    case 'KeyB':
+      if (me?.cb) {
+        keys.clear(); mouseB = 0; if (hud.wheelOpen) hud.closeWheel();
+        hud.toggleBuy(true); hud.renderBuy(me, roster.get(myId)?.tm || 1, { buySeconds: latest?.buySeconds });
+        document.exitPointerLock?.(); sfx.ui(true);
+      } else sfx.ui(false);
+      break;
     case 'Escape': hud.toggleBuy(false); break;
     case 'KeyQ': if (me && wasAlive && !hud.wheelOpen) hud.openWheel(me); break;
     case 'KeyG': send({ t: 'drop' }); break;
@@ -365,7 +402,7 @@ function frame(tms) {
     for (let left = dt; left > 1e-4; left -= 0.05) {
       const d = round4(Math.min(0.05, left));
       seq++;
-      send({ t: 'in', s: seq, b, y, p, d, it: +rt.toFixed(3) });
+      send({ t: 'in', map: hello.map.id, s: seq, b, y, p, d, it: +rt.toFixed(3) });
       if (alive) {
         simStep(pred, mb, y, d, sp);
         pending.push({ s: seq, mb, y, d, sp });
@@ -438,7 +475,7 @@ function frame(tms) {
     else if (latest.bomb && roster.get(myId)?.tm === 2 && Math.hypot(latest.bomb[0] - pred[0], latest.bomb[2] - pred[2]) < 1.8) hint = 'Hold E to defuse';
     else if (latest.ph === 0) hint = me.cb ? 'Buy time — press B' : '';
     if (hud.buyOpen && !me.cb) hud.toggleBuy(false);
-    hud.renderBuy(me, roster.get(myId)?.tm || 1);
+    hud.renderBuy(me, roster.get(myId)?.tm || 1, { buySeconds: latest.buySeconds });
   } else if (hud.buyOpen) { hud.toggleBuy(false); hud.renderBuy(me || { mo: 0 }, 1); }
   if (!alive && me && latest.ph !== 3) specName = specName || 'You will spawn next round';
   hud.update(dt, {
@@ -468,5 +505,5 @@ requestAnimationFrame(frame);
 if (location.search.includes('debug')) {
   window.__bp = { world, get pred() { return pred; }, get me() { return me; }, get latest() { return latest; },
     get view() { return { yaw, pitch }; }, set view(v) { yaw = v.yaw; pitch = v.pitch; }, get pending() { return pending.length; }, get err() { return err; },
-    get weapons() { return weapons; }, get aim() { return aimBlend; }, get fov() { return fov; }, get settings() { return settings.state; } };
+    get weapons() { return weapons; }, get aim() { return aimBlend; }, get fov() { return fov; }, get settings() { return settings.state; }, get map() { return hello?.map; }, get predictedMap() { return predictedMap; } };
 }

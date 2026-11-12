@@ -1,74 +1,66 @@
-//! "Sirocco" — an original sandstone-town tactical map authored as a tile grid.
+//! Authored tactical maps shared by the native server and WebAssembly client.
 use crate::V3;
 use std::sync::OnceLock;
 
 pub const CELL: f32 = 2.0;
 
-/// Sirocco: a sun-bleached town with west market tunnels, offset middle
-/// gates, an eastern long street, and a short arcade into the A courtyard.
-/// Broad outer avenues and two separately screened spawn courtyards give
-/// both teams room to spread out before reaching the contested approaches.
-/// The original central landmarks stay fixed; six tiles of padding on each
-/// edge extend the town to 116 by 104 metres. Tall buildings shield both
-/// spawn courts, with two wide side exits that turn around their cover.
-/// `#`/`H` building blocks, `D` timber gate leaves, `c`/`k` supply crates,
-/// `=` stone breastwork, `A`/`B` sites, `1`/`2` team spawns, `.` lanes.
-/// Walk routes stay at ground level so native and WASM movement and the
-/// bot navigation grid share exactly the same traversal rules.
-pub const ROWS: [&str; 52] = [
-    "##########################################################",
-    "#################........................#################",
-    "#################........................#################",
-    "#################.........222222.........#################",
-    "#################.........222222.........#################",
-    "#################........................#################",
-    "#################....HHHHHHHHHHHHHHHH....#################",
-    "############HHHHH....HHHHHHHHHHHHHHHH....H################",
-    "########BBBBBBBBBBBB.HHHHHHHHHHHHHHHHAAAAAAAAAAAAA########",
-    "########BkkBBBBBBBBB.###..........##HAA..AAAAAAAAA########",
-    "########BkkBBBBBBBBB.###..........##HAA..AAAAAAAAA......##",
-    "##......BBBBBBBBB........................AAAAAAAAA......##",
-    "##......BBB.BBBBB........................AAAAAAAAA......##",
-    "##......BBBBBBBBkk.......................AAAAAkkAA......##",
-    "##......BBBBBBBBkk....###........HHH#AAAAccA..kk......cc##",
-    "##......B......BB.....###........HHH#AAAAAAA..........cc##",
-    "##......B......BB.....###................AAA............##",
-    "##......H......##..............c.........###............##",
-    "##......H......##........................###....=.......##",
-    "##......H......##........................###....=.......##",
-    "##......#......#####................########............##",
-    "##kk....#......#########H...........########............##",
-    "##kk....#......#########H.........=.########..........kk##",
-    "##......#......#########HHD...D##.=.########..kk......kk##",
-    "##......#......#########HHD...D##.=.########..kk........##",
-    "##......#......#########H...........########............##",
-    "##......#......#########H...........########............##",
-    "##cc....#......###HHHHHH#...........######HH............##",
-    "##cc....#........................#########HH............##",
-    "##......#...........==...........#########HH............##",
-    "##......#.................kk.....#########HH............##",
-    "##......#.................kk.....#########HHD...HHH.....##",
-    "##......#...........HHHH#........#########HHD...HHH.....##",
-    "##......#...........HHHH#........#########HH............##",
-    "##..................##.............#HHHHHH##............##",
-    "##......................................................##",
-    "##................................c.....................##",
-    "##..kk............c..................................cc.##",
-    "##..kk............c..................................cc.##",
-    "##......................................................##",
-    "##......................................................##",
-    "##..................HHHHHHHHHHHHHHHHHH..................##",
-    "#######HHHHH###.....HHHHHHHHHHHHHHHHHH..................##",
-    "#######HHHHH###.....HHHHHHHHHHHHHHHHHH.....###############",
-    "#######HHHHH###.....HHHHHHHHHHHHHHHHHH.....###############",
-    "###############............................###############",
-    "###############............................###############",
-    "###############..........11111111..........###############",
-    "###############..........11111111..........###############",
-    "###############..........11111111..........###############",
-    "###############............................###############",
-    "##########################################################",
-];
+/// Stable IDs shared by native collision, client prediction and the wire protocol.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u32)]
+pub enum MapId {
+    #[default]
+    Sirocco = 0,
+    Dockyard = 1,
+    Norheim = 2,
+    Meridian = 3,
+}
+
+impl MapId {
+    pub const ALL: [Self; 4] = [Self::Sirocco, Self::Dockyard, Self::Norheim, Self::Meridian];
+
+    pub const fn index(self) -> u32 { self as u32 }
+
+    pub fn from_index(index: u32) -> Option<Self> {
+        Self::ALL.get(index as usize).copied()
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|map| map.id() == id)
+    }
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Sirocco => "sirocco", Self::Dockyard => "dockyard",
+            Self::Norheim => "norheim", Self::Meridian => "meridian",
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Sirocco => "Sirocco", Self::Dockyard => "Dockyard",
+            Self::Norheim => "Norheim", Self::Meridian => "Meridian",
+        }
+    }
+
+    pub const fn theme(self) -> &'static str {
+        match self {
+            Self::Sirocco => "desert", Self::Dockyard => "industrial",
+            Self::Norheim => "office", Self::Meridian => "ship",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Sirocco => "Sandstone courtyards, market tunnels and wide desert avenues.",
+            Self::Dockyard => "The original container yard, with sheltered spawns and industrial lanes.",
+            Self::Norheim => "A night shift through offices, meeting rooms and service corridors.",
+            Self::Meridian => "A cargo ship with open deck routes, cargo stacks and a central superstructure.",
+        }
+    }
+}
+
+// Keep the original public layout available to existing tools.
+pub use crate::maps::sirocco::ROWS;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Aabb {
@@ -97,6 +89,7 @@ impl Zone {
 }
 
 pub struct Map {
+    pub id: MapId,
     pub boxes: Vec<Aabb>,
     pub w: usize,
     pub h: usize,
@@ -104,9 +97,11 @@ pub struct Map {
     pub sites: [Zone; 2],
     /// Spawn points (x, z): attackers, defenders.
     pub spawns: [Vec<[f32; 2]>; 2],
+    /// Team, then left/right courtyard exit. Used to face newly spawned players.
+    spawn_exits: [[[f32; 2]; 2]; 2],
 }
 
-fn solid(ch: u8) -> Option<(f32, u8)> {
+pub fn standard_tile(ch: u8) -> Option<(f32, u8)> {
     match ch {
         b'#' => Some((7.0, 1)),
         b'H' => Some((9.5, 1)),
@@ -119,10 +114,23 @@ fn solid(ch: u8) -> Option<(f32, u8)> {
 }
 
 impl Map {
-    pub fn build() -> Map {
-        let h = ROWS.len();
-        let w = ROWS[0].len();
-        let grid: Vec<&[u8]> = ROWS.iter().map(|r| r.as_bytes()).collect();
+    /// The original default map remains Sirocco for legacy callers.
+    pub fn build() -> Map { crate::maps::sirocco::build() }
+
+    /// Build a flat tactical map from 2 m ASCII tiles. Solid tiles merge into
+    /// collision boxes; A/B mark bomb sites and 1/2 mark team spawn centers.
+    pub fn from_rows(
+        id: MapId,
+        rows: &[&str],
+        tile_style: fn(u8) -> Option<(f32, u8)>,
+        extras: &[Aabb],
+        spawn_exits: [[[f32; 2]; 2]; 2],
+    ) -> Map {
+        assert!(!rows.is_empty(), "map needs at least one row");
+        let h = rows.len();
+        let w = rows[0].len();
+        assert!(w > 0, "map needs at least one column");
+        let grid: Vec<&[u8]> = rows.iter().map(|r| r.as_bytes()).collect();
         for r in &grid {
             assert_eq!(r.len(), w, "map rows must have equal width");
         }
@@ -141,7 +149,7 @@ impl Map {
         for r in 0..h {
             for c in 0..w {
                 let ch = grid[r][c];
-                let Some((height, mat)) = solid(ch) else { continue };
+                let Some((height, mat)) = tile_style(ch) else { continue };
                 if used[r][c] {
                     continue;
                 }
@@ -172,16 +180,7 @@ impl Map {
             }
         }
 
-        // True collision roofs make the western route a sheltered tunnel.
-        // Their undersides are above a standing/jumping player. Unlike ground
-        // obstacles they must not block the server's navigation grid.
-        for (min, max, var) in [
-            ([-40.0, 3.6, -18.0], [-28.0, 4.3, 12.0], 1),
-            ([-4.0, 4.2, -6.0], [2.0, 7.0, -2.0], 2),
-            ([32.0, 4.2, 10.0], [38.0, 7.0, 14.0], 3),
-        ] {
-            boxes.push(Aabb { min, max, mat: 1, var });
-        }
+        boxes.extend_from_slice(extras);
 
         let zone = |target: u8| {
             let mut z = Zone { min: [f32::MAX; 2], max: [f32::MIN; 2] };
@@ -195,6 +194,7 @@ impl Map {
                     }
                 }
             }
+            assert!(z.min[0].is_finite() && z.min[0] <= z.max[0], "map needs both bomb sites");
             z
         };
         let spawns = |target: u8| {
@@ -206,10 +206,13 @@ impl Map {
                     }
                 }
             }
+            assert!(!v.is_empty(), "map needs spawn points for both teams");
             v
         };
 
         Map {
+            id,
+            spawn_exits,
             boxes,
             w,
             h,
@@ -226,16 +229,26 @@ impl Map {
     /// Face the nearest broad courtyard exit instead of the protective front
     /// building. Team indices match `spawns`: 0 attackers, 1 defenders.
     pub fn spawn_yaw(&self, team: usize, position: [f32; 2]) -> f32 {
-        let side = if position[0] < 0.0 { -1.0 } else { 1.0 };
-        let target = if team == 0 { [side * 23.0, 40.0] } else { [side * 20.0, -42.0] };
+        let side = usize::from(position[0] >= 0.0);
+        let target = self.spawn_exits[team][side];
         (position[0] - target[0]).atan2(position[1] - target[1])
     }
 }
 
-pub fn map() -> &'static Map {
-    static MAP: OnceLock<Map> = OnceLock::new();
-    MAP.get_or_init(Map::build)
+pub fn map_by_id(id: MapId) -> &'static Map {
+    static SIROCCO: OnceLock<Map> = OnceLock::new();
+    static DOCKYARD: OnceLock<Map> = OnceLock::new();
+    static NORHEIM: OnceLock<Map> = OnceLock::new();
+    static MERIDIAN: OnceLock<Map> = OnceLock::new();
+    match id {
+        MapId::Sirocco => SIROCCO.get_or_init(crate::maps::sirocco::build),
+        MapId::Dockyard => DOCKYARD.get_or_init(crate::maps::dockyard::build),
+        MapId::Norheim => NORHEIM.get_or_init(crate::maps::norheim::build),
+        MapId::Meridian => MERIDIAN.get_or_init(crate::maps::meridian::build),
+    }
 }
+
+pub fn map() -> &'static Map { map_by_id(MapId::Sirocco) }
 
 #[cfg(test)]
 mod tests {
@@ -245,7 +258,13 @@ mod tests {
 
     #[test]
     fn all_spawns_and_both_sites_share_walkable_routes() {
-        let m = Map::build();
+        for id in MapId::ALL {
+            println!("checking walkable routes on {}", id.id());
+            check_walkable_routes(map_by_id(id));
+        }
+    }
+
+    fn check_walkable_routes(m: &Map) {
         let (w, h) = (m.w * 2, m.h * 2);
         let at = |c: usize, r: usize| [c as f32 + 0.5 - m.w as f32, 0.01, r as f32 + 0.5 - m.h as f32];
         let cell = |p: [f32; 2]| ((p[0] + m.w as f32).floor() as usize, (p[1] + m.h as f32).floor() as usize);
@@ -281,6 +300,21 @@ mod tests {
     }
 
     #[test]
+    fn map_ids_are_stable_and_invalid_ids_do_not_fall_back() {
+        for id in MapId::ALL {
+            assert_eq!(MapId::from_index(id.index()), Some(id));
+            assert_eq!(MapId::from_id(id.id()), Some(id));
+            assert_eq!(map_by_id(id).id, id);
+        }
+        assert_eq!(MapId::from_index(4), None);
+        assert_eq!(MapId::from_index(u32::MAX), None);
+        assert_eq!(MapId::from_id("Sirocco"), None);
+        assert_eq!(MapId::from_id("missing"), None);
+        assert!(std::ptr::eq(map(), map_by_id(MapId::Sirocco)));
+        assert_eq!(Map::build().id, MapId::Sirocco);
+    }
+
+    #[test]
     fn tunnel_and_both_gateways_have_standing_clearance() {
         let m = Map::build();
         for (x, z) in [(-34.0, -15.0), (-34.0, 8.0), (-1.0, -4.0), (35.0, 12.0)] {
@@ -291,7 +325,13 @@ mod tests {
 
     #[test]
     fn spawn_facing_offers_twelve_metres_of_clear_courtyard() {
-        let m = Map::build();
+        for id in MapId::ALL {
+            println!("checking spawn-facing clearance on {}", id.id());
+            check_spawn_facing(map_by_id(id));
+        }
+    }
+
+    fn check_spawn_facing(m: &Map) {
         for (team, spawns) in m.spawns.iter().enumerate() {
             for &spawn in spawns {
                 let direction = view_dir(m.spawn_yaw(team, spawn), 0.0);

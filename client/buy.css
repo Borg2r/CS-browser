@@ -1,0 +1,145 @@
+/* Scoped shop layout. Loaded after the compact in-game HUD styles. */
+#buy {
+  --bu-accent:#e6bf72; --bu-muted:#98a6b1; --bu-edge:#ffffff13;
+  position:absolute; z-index:8; inset:50% auto auto 50%; transform:translate(-50%,-50%);
+  width:min(1180px,calc(100vw - 64px)); height:min(740px,calc(100dvh - 72px));
+  padding:0; display:flex; flex-direction:column; overflow:hidden; pointer-events:auto;
+  background:linear-gradient(120deg,#19232bf5,#10171ff7 75%); color:#edf0f2;
+  border:1px solid #71818e66; border-top:3px solid var(--bu-accent); border-radius:7px;
+  box-shadow:0 24px 100px #000c,0 0 0 100vmax #080d1577; text-shadow:none;
+  font-family:"Segoe UI",system-ui,sans-serif; font-variant-numeric:tabular-nums;
+  backdrop-filter:blur(12px);
+}
+#buy[data-team="2"] { --bu-accent:#87c6f3; }
+#buy button { font:inherit; color:inherit; cursor:pointer; border-radius:3px; }
+#buy button:focus-visible { outline:2px solid var(--bu-accent); outline-offset:-3px; }
+#buy button[aria-disabled="true"] { cursor:default; }
+#buy kbd { font:600 10px "Segoe UI",system-ui,sans-serif; min-width:18px; height:18px; padding:1px 5px; display:inline-flex; align-items:center; justify-content:center; color:#b6c2cb; background:#080e1555; border:1px solid #71818e55; border-radius:3px; }
+#buy .bu-header { flex:none; display:flex; align-items:center; padding:18px 24px 16px; gap:20px; }
+#buy .bu-eyebrow { color:var(--bu-accent); font-size:10px; font-weight:700; letter-spacing:.2em; margin-bottom:3px; }
+#buy .bu-header h2 { display:block; border:0; margin:0; padding:0; font-size:27px; line-height:1.2; font-weight:750; letter-spacing:.07em; }
+#buy .bu-budget { margin-left:auto; text-align:right; }
+#buy .bu-budget span { display:block; color:var(--bu-muted); font-size:9px; font-weight:600; letter-spacing:.13em; }
+#buy .bu-budget strong { display:block; color:#bdeaa5; font-size:29px; line-height:1.15; font-weight:650; }
+#buy .bu-close { flex:none; width:32px; height:32px; padding:0; border:1px solid #71818e55; background:#ffffff05; color:#adb9c1; font-size:26px; line-height:1; }
+#buy .bu-close:hover { background:#ffffff15; color:#fff; }
+#buy .bu-tabs { flex:none; display:grid; grid-template-columns:repeat(6,1fr); background:#090f1755; border-block:1px solid var(--bu-edge); }
+#buy .bu-tabs button { position:relative; border:0; border-right:1px solid var(--bu-edge); background:transparent; padding:15px 5px; color:#a8b4be; font-size:13px; font-weight:650; border-radius:0; white-space:nowrap; }
+#buy .bu-tabs button:last-child { border-right:0; }
+#buy .bu-tabs button kbd { margin-right:9px; }
+#buy .bu-tabs button:hover { color:#fff; background:#ffffff07; }
+#buy .bu-tabs button.bu-active { color:var(--bu-accent); background:linear-gradient(0deg,#dcb56d12,transparent); }
+#buy .bu-tabs button.bu-active:after { content:""; position:absolute; bottom:-1px; left:0; right:0; height:3px; background:var(--bu-accent); }
+#buy .bu-body { display:flex; flex:1; min-height:0; }
+#buy .bu-shop { flex:1; min-width:0; padding:20px 22px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#637582 #101820; }
+#buy .bu-section-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:16px; }
+#buy h3 { margin:0; font-size:18px; font-weight:650; }
+#buy .bu-section-heading p { margin:5px 0 0; color:var(--bu-muted); font-size:11px; }
+#buy .bu-back { flex:none; background:transparent; border:0; padding:6px 0 6px 8px; color:#a9b6bf; font-size:10px; }
+#buy .bu-back kbd { margin-right:4px; }
+#buy .bu-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+#buy .bu-many-items { grid-template-columns:repeat(4,minmax(0,1fr)); }
+#buy .bu-card, #buy .bu-category { position:relative; width:100%; min-width:0; text-align:left; border:1px solid #71818e38; background:linear-gradient(145deg,#53606a16,#0b121a44); padding:10px 12px 11px; transition:border-color .12s,background .12s; }
+#buy .bu-card:hover, #buy .bu-card.bu-selected, #buy .bu-category:hover { border-color:var(--bu-accent); background:linear-gradient(145deg,#a8926022,#202c3555); }
+#buy .bu-card.bu-selected { box-shadow:inset 3px 0 var(--bu-accent); }
+#buy .bu-card-top { display:flex; justify-content:space-between; align-items:center; gap:5px; }
+#buy .bu-card-top > span { font-size:8px; font-weight:650; letter-spacing:.08em; color:var(--bu-muted); }
+#buy .bu-card-top > .bu-card-price { color:#dbe7d0; font-size:13px; letter-spacing:0; }
+#buy .bu-art { display:block; width:100%; height:76px; color:#c7d0d5; overflow:visible; filter:drop-shadow(0 4px 4px #0005); }
+#buy .bu-etch { fill:none; stroke:#25323d; stroke-width:3; }
+#buy .bu-card .bu-art { height:66px; margin:0 auto 2px; }
+#buy .bu-card strong, #buy .bu-category strong { display:block; font-size:12px; font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#buy .bu-card-status { display:block; margin-top:5px; min-height:11px; color:#8899a7; font-size:8px; font-weight:650; letter-spacing:.04em; }
+#buy .bu-owned .bu-card-status { color:#a9d996; }
+#buy .bu-owned .bu-card-price { color:#a9d996; }
+#buy .bu-unaffordable .bu-art { color:#7f8c96; }
+#buy .bu-unaffordable .bu-card-price, #buy .bu-unaffordable .bu-card-status { color:#d59c92; }
+#buy .bu-category { padding:12px 14px 13px; }
+#buy .bu-category .bu-art { height:70px; margin:4px 0; }
+#buy .bu-category strong { font-size:16px; }
+#buy .bu-category-hint { display:block; color:var(--bu-muted); font-size:10px; margin-top:5px; white-space:nowrap; }
+#buy .bu-category-price { display:flex; align-items:center; justify-content:space-between; color:var(--bu-accent); margin-top:15px; font-size:9px; font-weight:600; letter-spacing:.04em; }
+#buy .bu-category-price b { font-size:18px; line-height:10px; }
+#buy .bu-detail { flex:none; width:302px; border-left:1px solid var(--bu-edge); background:radial-gradient(ellipse at 50% 20%,#53616e18,transparent 65%),#080e1733; padding:22px; display:flex; flex-direction:column; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#637582 #101820; }
+#buy .bu-detail-kicker { color:var(--bu-accent); font-size:9px; letter-spacing:.16em; font-weight:650; }
+#buy .bu-detail-art { flex:none; background:radial-gradient(ellipse at 50% 60%,#90a1b315,transparent 70%); }
+#buy .bu-detail-art .bu-art { height:118px; color:#e0e6e9; }
+#buy .bu-detail h3 { font-size:22px; line-height:1.15; margin:0 0 7px; }
+#buy .bu-description { font-size:11px; line-height:1.55; color:#aab6bf; margin:0 0 16px; }
+#buy .bu-stats { display:grid; grid-template-columns:1fr 1fr; gap:14px 16px; margin:0 0 17px; }
+#buy .bu-stat > div:first-child { display:flex; flex-direction:column; gap:4px; }
+#buy .bu-stat span { font-size:9px; color:var(--bu-muted); }
+#buy .bu-stat b { font-size:12px; font-weight:600; }
+#buy .bu-meter { height:3px; background:#ffffff10; margin-top:6px; }
+#buy .bu-meter i { display:block; height:100%; background:var(--bu-accent); opacity:.75; }
+#buy .bu-gear-benefit { grid-column:1/-1; border-block:1px solid var(--bu-edge); padding:15px 0; }
+#buy .bu-gear-benefit span { display:block; font-size:9px; letter-spacing:.1em; color:var(--bu-muted); }
+#buy .bu-gear-benefit strong { display:block; font-size:24px; font-weight:500; margin:4px 0; }
+#buy .bu-gear-benefit small { font-size:10px; color:#aab6bf; }
+#buy .bu-purchase-area { margin-top:auto; }
+#buy .bu-purchase { display:flex; align-items:center; justify-content:space-between; gap:6px; width:100%; padding:13px 12px; border:1px solid var(--bu-accent); background:var(--bu-accent); color:#17202a; }
+#buy .bu-purchase span { font-size:10px; font-weight:750; letter-spacing:.04em; }
+#buy .bu-purchase strong { font-size:17px; font-weight:750; }
+#buy .bu-purchase:not(:disabled):hover { filter:brightness(1.1); }
+#buy .bu-purchase:disabled { background:#ffffff05; border-color:#71818e44; color:#8b9aa6; cursor:default; }
+#buy .bu-purchase-note { color:var(--bu-muted); font-size:10px; line-height:1.5; min-height:30px; margin:8px 0 0; }
+#buy .bu-loadout { flex:none; display:flex; align-items:center; gap:10px; padding:12px 22px; border-top:1px solid var(--bu-edge); background:#0a111944; }
+#buy .bu-loadout-label { font-size:9px; font-weight:650; letter-spacing:.13em; color:#9cabb6; width:65px; }
+#buy .bu-loadout-item { display:flex; align-items:center; gap:7px; flex:1; min-width:0; border-left:1px solid var(--bu-edge); padding-left:12px; }
+#buy .bu-loadout-item .bu-art { width:58px; height:32px; flex:none; }
+#buy .bu-loadout-item > span { min-width:0; }
+#buy .bu-loadout-item small { display:block; font-size:8px; letter-spacing:.1em; color:#8394a2; margin-bottom:4px; }
+#buy .bu-loadout-item b { display:block; font-size:10px; font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+#buy .bu-empty { color:#80909d; }
+#buy .bu-empty .bu-art { opacity:.35; }
+#buy .bu-footer { flex:none; display:flex; align-items:center; gap:12px; min-height:36px; padding:8px 22px; border-top:1px solid var(--bu-edge); background:#080e1780; font-size:9px; }
+#buy .bu-zone { display:flex; align-items:center; gap:6px; white-space:nowrap; font-size:8px; font-weight:650; color:#d69b90; letter-spacing:.06em; }
+#buy .bu-zone i { display:block; width:5px; height:5px; background:currentColor; border-radius:50%; }
+#buy .bu-zone-open { color:#abd293; }
+#buy .bu-time { font-weight:400; color:#95a5b1; letter-spacing:0; margin-left:5px; }
+#buy .bu-notice { color:var(--bu-accent); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+#buy .bu-shortcuts { white-space:nowrap; margin-left:auto; color:#8e9da9; }
+#buy .bu-shortcuts kbd { min-width:16px; height:16px; font-size:8px; margin:0 3px 0 7px; }
+@media (max-width:1100px) {
+  #buy { width:calc(100vw - 32px); height:calc(100dvh - 42px); }
+  #buy .bu-detail { width:260px; padding:17px; }
+  #buy .bu-shop { padding:17px; }
+  #buy .bu-grid { gap:7px; }
+  #buy .bu-card, #buy .bu-category { padding:10px; }
+  #buy .bu-loadout { gap:7px; padding-inline:17px; }
+  #buy .bu-loadout-item { padding-left:8px; }
+  #buy .bu-loadout-item .bu-art { width:42px; }
+  #buy .bu-category-hint { font-size:9px; }
+  #buy .bu-time { display:none; }
+}
+@media (max-height:700px) {
+  #buy .bu-header { padding-block:12px; }
+  #buy .bu-header h2 { font-size:23px; }
+  #buy .bu-tabs button { padding-block:11px; }
+  #buy .bu-section-heading { margin-bottom:11px; }
+  #buy .bu-card .bu-art { height:49px; }
+  #buy .bu-category .bu-art { height:54px; }
+  #buy .bu-category-price { margin-top:10px; }
+  #buy .bu-detail-art .bu-art { height:58px; }
+  #buy .bu-detail h3 { font-size:20px; }
+  #buy .bu-description { font-size:10px; line-height:1.4; margin-bottom:10px; }
+  #buy .bu-stats { gap:10px 12px; margin-bottom:12px; }
+  #buy .bu-stat > div:first-child { flex-direction:row; justify-content:space-between; align-items:center; }
+  #buy .bu-stat span { font-size:8px; }
+  #buy .bu-stat b { font-size:11px; }
+  #buy .bu-loadout { padding-block:8px; }
+}
+@media (max-width:760px) {
+  #buy { width:calc(100vw - 16px); height:calc(100dvh - 24px); }
+  #buy .bu-header { padding-inline:15px; }
+  #buy .bu-tabs button { font-size:11px; }
+  #buy .bu-tabs button kbd { display:none; }
+  #buy .bu-detail { display:none; }
+  #buy .bu-shop { padding:15px; }
+  #buy .bu-loadout-label, #buy .bu-loadout-item .bu-art { display:none; }
+  #buy .bu-loadout { padding-inline:8px; }
+  #buy .bu-footer { padding-inline:12px; }
+  #buy .bu-notice { flex:1; }
+  #buy .bu-shortcuts { font-size:0; }
+  #buy .bu-shortcuts kbd { font-size:8px; }
+}

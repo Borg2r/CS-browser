@@ -135,3 +135,18 @@ button:focus-visible, select:focus-visible { outline: 2px solid #e5c38a; outline
 @media (max-width: 700px) { #radar { width: 120px; height: 112px; } #top { font-size: 20px; } }
 @media (max-height: 840px) { #menu { gap: 8px; } #menu h1 { font-size: 44px; } .map-brief { padding: 8px 16px; } #menu .tag { margin-bottom: 0; } }
 @media (max-height: 600px) { #menu { justify-content: flex-start; } }
+
+/* Shared map selection. The server owns the active operation. */
+#menu .map-brief { width: min(520px, 94vw); }
+#menu .map-brief label { width: 100%; }
+#map-select { width: 220px; max-width: 60%; }
+#map-brief[data-theme="industrial"] { border-color: #7da9b3; background: #172b32aa; }
+#map-brief[data-theme="office"] { border-color: #9bb7a2; background: #203229aa; }
+#map-brief[data-theme="ship"] { border-color: #7ca6d3; background: #192a40aa; }
+#match-settings { max-height: 90vh; overflow-y: auto; width: min(500px, 94vw); }
+#match-map { width: 100%; }
+.match-map-setting { border-bottom: 1px solid #ffffff22; margin-bottom: 10px; padding-bottom: 6px; }
+#match-map-description { color: #e5c38a; min-height: 42px; }
+#map-reset-note { display: block; font-size: 12px; line-height: 1.5; color: #b8c3cf; margin: 0 0 12px; }
+#map-feedback { min-height: 21px; color: #a6dfa0; margin: 8px 0; }
+#map-apply:not(:disabled) { background: #bda172; border-color: #bda172; color: #17202b; }

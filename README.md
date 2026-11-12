@@ -57,12 +57,18 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 
 ## Game
 
-- Map **Sirocco**: an original sandstone town with two objective courtyards,
-  long and short approaches, central double doors, and a covered tunnel to B.
-  Its lanes recall classic desert tactical-shooter maps, with an original layout.
-- Expanded 116 × 104 m footprint with a wider long street and a western avenue.
-  Both teams start in sheltered courtyards with two exits around solid buildings;
-  opposing spawns have no direct or wall-penetrating firing line.
+- Four operations with protected spawns, multiple approaches and two bomb sites:
+  **Sirocco**, the expanded desert town; **Dockyard**, the original container
+  terminal with wider quays; **Norheim**, an office operation based on the actual
+  Kontor Norheim model; and **Meridian**, a cargo ship with side decks, cargo
+  aisles and a bridge. Norheim adapts the showroom, atrium, office rows, meeting
+  room and warehouse into a spacious, single-floor playable layout.
+- The first player chooses the map before joining. The host can switch maps
+  through **F2 → Operation → Start selected map**. This starts a new match for
+  everyone, resetting scores and equipment while keeping connected players,
+  teams and bot difficulty. Other players see the active map and join it.
+- Spawn courtyards block direct and wall-penetrating shots from opposing spawns,
+  including jumping sightlines. Bots can reach both objectives on every map.
 - Detailed procedural weapons and operators, articulated equipment, warm desert
   lighting, and architectural scenery. No external model downloads are needed.
 - 30 rounds: sides swap at half-time after 15, first team to 16 wins.
@@ -70,7 +76,11 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   slow-down when hit, hold-to-aim iron sights and optics, knife slash / stab / backstab.
 - 24 firearms (pistols, two akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
   knife, frag / flash / smoke grenades, armour, helmet and defuse kit.
-- Economy with kill rewards, round win / loss bonuses and a buy menu.
+- Economy with kill rewards and round win / loss bonuses. The CS-inspired buy
+  menu has six categories, weapon illustrations, prices and statistics, a budget
+  and loadout overview, and a buy timer. Owned items, grenade limits and
+  unaffordable purchases are clearly marked. The menu stays open after a buy;
+  clicking an item or its number buys it, **0** goes back, and **B** closes it.
 - Bot difficulty: **Easy**, **Medium** (default), **Hard**, and **Expert** change
   reactions, aiming, firing rhythm and combat movement. The first human player
   chooses the shared level before joining; the match host can change it live
@@ -91,7 +101,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 | Mouse 1 / Mouse 2   | Fire, plant / hold to aim, knife stab         |
 | Mouse 1 / Mouse 2 (akimbo) | Left pistol / right pistol; no aiming  |
 | R / E / G           | Reload / defuse / drop weapon                 |
-| F2                  | Bot difficulty (host can change it)           |
+| F2                  | Map and bot difficulty (host controls both)   |
 | B                   | Buy menu (number keys or click)               |
 | Q                   | Hold: weapon wheel · tap: last weapon         |
 | 1–5, mouse wheel    | Primary, sidearm, knife, grenades, charge     |
@@ -114,3 +124,7 @@ run it on a development server rather than during a match with friends.
 `node scripts/difficulty-smoke.mjs http://127.0.0.1:8086` checks difficulty
 selection, synchronization, guest permissions and host transfer on an idle
 development server. It temporarily changes the shared bot level.
+
+`node scripts/maps-smoke.mjs http://127.0.0.1:8088` checks map switching,
+permissions, multiplayer synchronization and matching WASM collision on a
+fresh development server. It changes the shared map and resets matches.

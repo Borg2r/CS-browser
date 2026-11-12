@@ -155,11 +155,17 @@ impl Nav {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sim::map::map;
+    use sim::map::{map_by_id, MapId};
 
     #[test]
     fn spawns_reach_both_sites() {
-        let m = map();
+        for id in MapId::ALL {
+            println!("checking bot routes on {}", id.id());
+            check_bot_routes(map_by_id(id));
+        }
+    }
+
+    fn check_bot_routes(m: &Map) {
         let nav = Nav::build(m);
         for team in &m.spawns {
             for &spawn in team {
