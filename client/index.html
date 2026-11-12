@@ -16,6 +16,7 @@
     <span id="timer">0:00</span>
     <span id="scoreD" class="def">0</span>
     <div id="alive"></div>
+    <button id="bot-settings-button" type="button" title="Bot difficulty (F2)">Bots: Medium · F2</button>
   </div>
   <div id="killfeed"></div>
   <div id="chatlog"></div>
@@ -45,6 +46,10 @@
   <label>Name <input id="name" maxlength="16" placeholder="Player"></label>
   <label>Mouse sensitivity <input id="sens" type="range" min="0.2" max="4" step="0.1" value="1"></label>
   <label>Volume <input id="vol" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+  <div class="difficulty-setting">
+    <label for="difficulty">Bot difficulty <select id="difficulty" disabled><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option><option value="expert">Expert</option></select></label>
+    <p id="difficulty-description"></p><small id="difficulty-note">Connecting to the match…</small>
+  </div>
   <div class="teams">
     <button data-team="1" class="atk" disabled>Attackers</button>
     <button data-team="0" disabled>Auto-assign</button>
@@ -59,10 +64,19 @@
     <b>WASD</b> move &middot; <b>Space</b> jump &middot; <b>C / Ctrl</b> crouch &middot; <b>Shift</b> walk &middot;
     <b>LMB</b> fire &middot; <b>Hold RMB</b> aim &middot; <b>R</b> reload &middot; <b>B</b> buy &middot;
     <b>Q</b> hold: weapon wheel, tap: last weapon &middot; <b>1-5</b> / wheel: weapons &middot;
-    <b>E</b> defuse &middot; <b>G</b> drop &middot; <b>Tab</b> scores &middot; <b>T</b> chat<br>
+    <b>E</b> defuse &middot; <b>G</b> drop &middot; <b>Tab</b> scores &middot; <b>T</b> chat &middot; <b>F2</b> bot difficulty<br>
     <b>Akimbo</b> left click = left pistol &middot; right click = right pistol &middot; no aiming
   </div>
 </div>
+<dialog id="match-settings" aria-labelledby="settings-title">
+  <h2 id="settings-title">Bot difficulty</h2>
+  <p id="difficulty-owner"></p>
+  <label for="match-difficulty">Difficulty</label>
+  <select id="match-difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option><option value="expert">Expert</option></select>
+  <p id="match-difficulty-description"></p>
+  <p id="difficulty-feedback" role="status" aria-live="polite"></p>
+  <div class="settings-actions"><button id="difficulty-apply" type="button">Apply</button><button id="settings-resume" type="button">Back to game</button></div>
+</dialog>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

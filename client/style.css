@@ -5,7 +5,7 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 .hidden { display: none !important; }
 .atk { color: #f0a04b; } .def { color: #5db4ff; }
 
-#menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+#menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center;
   gap: 14px; background: radial-gradient(ellipse at center, rgba(8,12,18,.55), rgba(8,12,18,.92)); text-align: center; padding: 16px; }
 #menu h1 { margin: 0; font-size: clamp(36px, 8vw, 76px); letter-spacing: .14em; font-weight: 800; }
 #menu .tag { margin: -8px 0 10px; opacity: .7; }
@@ -17,6 +17,29 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 #menu label { display: flex; gap: 12px; align-items: center; justify-content: space-between; width: min(360px, 90vw); }
 #menu input:not([type=range]) { background: #141b24; border: 1px solid #2c3948; color: inherit; padding: 8px 10px; border-radius: 4px; font-size: 16px; width: 200px; }
 #menu input[type=range] { width: 200px; }
+select { background: #141b24; border: 1px solid #46515d; color: #e8edf2; padding: 8px 10px; border-radius: 4px; font: inherit; }
+select:disabled { opacity: .65; }
+.difficulty-setting { width: min(420px, 90vw); padding: 10px 0; border-block: 1px solid #ad956a44; }
+#menu .difficulty-setting label { margin: auto; }
+#difficulty { width: 200px; }
+.difficulty-setting p { margin: 7px 0 3px; font-size: 12px; color: #d8c8ab; }
+.difficulty-setting small { display: block; font-size: 11px; color: #aab4bd; }
+#bot-settings-button { pointer-events: auto; border: 0; border-top: 1px solid #ffffff22; background: none; color: #e5c38a; padding: 4px 0 1px; margin-top: 3px; font: 11px "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+#bot-settings-button:hover { color: #fff; }
+#match-settings { width: min(440px, 92vw); padding: 24px; background: #17202b; color: #e8edf2; border: 1px solid #7d725f; border-radius: 8px; box-shadow: 0 18px 80px #0009; }
+#match-settings::backdrop { background: #080c12bb; }
+#match-settings h2 { margin: 0 0 10px; font-size: 23px; }
+#match-settings p { font-size: 14px; line-height: 1.5; }
+#difficulty-owner { color: #abb8c5; }
+#match-settings label { display: block; font-size: 13px; margin: 18px 0 6px; }
+#match-difficulty { width: 100%; }
+#match-difficulty-description { min-height: 42px; color: #e5c38a; }
+#difficulty-feedback { min-height: 21px; color: #a6dfa0; }
+.settings-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.settings-actions button { font: inherit; padding: 9px 14px; border: 1px solid #526171; border-radius: 4px; background: #263648; color: #fff; cursor: pointer; }
+.settings-actions button:disabled { opacity: .4; cursor: default; }
+#difficulty-apply:not(:disabled) { background: #bda172; border-color: #bda172; color: #17202b; }
+button:focus-visible, select:focus-visible { outline: 2px solid #e5c38a; outline-offset: 3px; }
 .teams { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
 .teams button { background: #17202b; border: 1px solid #334456; color: #e8edf2; padding: 12px 22px; font-size: 17px; font-weight: 600;
   border-radius: 4px; cursor: pointer; }
@@ -110,5 +133,5 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 #scoreboard tr.dead { opacity: .45; } #scoreboard tr.me { background: rgba(255,255,255,.08); }
 #scoreboard th { text-align: right; font-weight: 500; opacity: .6; font-size: 12px; padding: 0 6px; }
 @media (max-width: 700px) { #radar { width: 120px; height: 112px; } #top { font-size: 20px; } }
-@media (max-height: 760px) { #menu { gap: 8px; } #menu h1 { font-size: 44px; } .map-brief { padding: 8px 16px; } #menu .tag { margin-bottom: 0; } }
+@media (max-height: 840px) { #menu { gap: 8px; } #menu h1 { font-size: 44px; } .map-brief { padding: 8px 16px; } #menu .tag { margin-bottom: 0; } }
 @media (max-height: 600px) { #menu { justify-content: flex-start; } }

@@ -2,12 +2,16 @@
 import { World } from './world.js';
 import { Hud } from './hud.js';
 import { Sfx } from './audio.js';
+import { BotSettings } from './settings.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('view');
 const world = new World(canvas);
 const sfx = new Sfx();
 const hud = new Hud(item => send({ t: 'buy', item }));
+const settings = new BotSettings(difficulty => send({ t: 'set_difficulty', difficulty }), () => {
+  if (joined) captureMouse();
+});
 
 const B = { FWD: 1, BACK: 2, LEFT: 4, RIGHT: 8, JUMP: 16, CROUCH: 32, WALK: 64, FIRE: 128, RELOAD: 256, USE: 512, FIRE2: 1024 };
 const FREEZE_MASK = ~(B.FWD | B.BACK | B.LEFT | B.RIGHT | B.JUMP);
@@ -41,7 +45,7 @@ let wasm = null;
 let loadingError = '';
 let serverReady = false;
 function updateReady() {
-  const ready = !!wasm && serverReady && ws?.readyState === WebSocket.OPEN;
+  const ready = !!wasm && serverReady && !!settings.state && ws?.readyState === WebSocket.OPEN;
   for (const button of document.querySelectorAll('.teams button')) button.disabled = !ready;
   $('status').textContent = loadingError || (ready ? 'Connected — pick a side' : !wasm ? 'Loading game…' : 'Connecting to server…');
 }
@@ -84,6 +88,7 @@ function connect() {
   ws.onopen = updateReady;
   ws.onclose = () => {
     serverReady = false;
+    settings.disconnect();
     updateReady();
     joined = false; $('menu').classList.remove('hidden'); $('hud').classList.add('hidden');
     if (!loadingError) $('status').textContent = 'Disconnected — reconnecting…';
@@ -96,6 +101,8 @@ function connect() {
       case 's': onSnap(m); break;
       case 'e': m.ev.forEach(onEvent); break;
       case 'r': roster = new Map(m.pl.map(p => [p.id, p])); break;
+      case 'settings': settings.update(m); updateReady(); break;
+      case 'settings_error': settings.error(m.m); break;
       case 'hello':
         if (!hello) { hello = m; weapons = m.weapons; world.buildMap(m.map); hud.init(m); }
         $('map-name').textContent = m.map.name || 'Sirocco';
@@ -118,8 +125,8 @@ for (const b of document.querySelectorAll('.teams button')) {
   b.onclick = () => {
     sfx.unlock(); applySettings();
     if (!hello || !wasm) { $('status').textContent = 'Still loading…'; return; }
-    send({ t: 'join', name: $('name').value.trim() || 'Player', team: +b.dataset.team });
-    canvas.requestPointerLock?.();
+    send({ t: 'join', name: $('name').value.trim() || 'Player', team: +b.dataset.team, difficulty: settings.joinPreference });
+    captureMouse();
   };
 }
 
@@ -214,11 +221,24 @@ function posOf(id) {
 
 // ---- input
 const locked = () => document.pointerLockElement === canvas;
+function captureMouse() {
+  // After Esc, some browsers require a fresh click before locking again.
+  try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch { /* Click to play remains available. */ }
+}
+function openSettings() {
+  if (!joined) return;
+  keys.clear(); mouseB = 0;
+  hud.toggleBuy(false);
+  if (hud.wheelOpen) hud.closeWheel();
+  chatOpen = false; $('chatbox').classList.add('hidden'); $('chatbox').blur();
+  settings.show();
+}
+$('bot-settings-button').onclick = openSettings;
 document.addEventListener('mousedown', e => {
   if (!joined) return;
   sfx.unlock();
-  if (hud.buyOpen || chatOpen || e.target.closest('#buy')) return;
-  if (!locked()) { if (!e.target.closest('#buy') && !chatOpen) canvas.requestPointerLock?.(); return; }
+  if (settings.open || hud.buyOpen || chatOpen || e.target.closest('#buy, #bot-settings-button')) return;
+  if (!locked()) { if (!e.target.closest('#buy') && !chatOpen) captureMouse(); return; }
   if (e.button === 0) { mouseB |= B.FIRE; if (!wasAlive) specIdx++; }
   if (e.button === 2) mouseB |= B.FIRE2;
 });
@@ -229,14 +249,14 @@ document.addEventListener('mouseup', e => {
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('pointerlockchange', () => { if (!locked()) { keys.clear(); mouseB = 0; } });
 document.addEventListener('mousemove', e => {
-  if (!locked()) return;
+  if (!locked() || settings.open) return;
   const mx = Math.max(-400, Math.min(400, e.movementX)), my = Math.max(-400, Math.min(400, e.movementY));
   if (hud.wheelOpen) { hud.moveWheel(mx, my); return; }
   const k = 0.0022 * sens * (fov / 74);
   yaw -= mx * k; pitch = Math.max(-1.55, Math.min(1.55, pitch - my * k));
 });
 document.addEventListener('wheel', e => {
-  if (!locked() || !me || !wasAlive) return;
+  if (!locked() || settings.open || !me || !wasAlive) return;
   const own = hud.owned(me); let s = me.sl;
   for (let i = 0; i < 7; i++) { s = (s + (e.deltaY > 0 ? 1 : 6)) % 7; if (own[s]) break; }
   send({ t: 'sel', slot: s });
@@ -245,6 +265,10 @@ document.addEventListener('wheel', e => {
 function selectSlot(s) { if (me && hud.owned(me)[s]) send({ t: 'sel', slot: s }); }
 document.addEventListener('keydown', e => {
   if (!joined) return;
+  if (settings.open) {
+    if (!e.repeat && (e.code === 'Escape' || e.code === 'F2')) { e.preventDefault(); settings.close(e.code !== 'Escape'); }
+    return;
+  }
   if (chatOpen) {
     if (e.code === 'Enter') { const v = $('chatbox').value.trim(); if (v) send({ t: 'chat', m: v }); }
     if (e.code === 'Enter' || e.code === 'Escape') { chatOpen = false; $('chatbox').value = ''; $('chatbox').classList.add('hidden'); $('chatbox').blur(); e.preventDefault(); }
@@ -256,6 +280,7 @@ document.addEventListener('keydown', e => {
   const digit = /^(Digit|Numpad)(\d)$/.exec(e.code);
   if (hud.buyOpen && digit) { hud.buyKey(+digit[2]); sfx.ui(true); return; }
   switch (e.code) {
+    case 'F2': e.preventDefault(); openSettings(); break;
     case 'KeyB': if (me?.cb || hud.buyOpen) { hud.toggleBuy(!hud.buyOpen); sfx.ui(true); } else sfx.ui(false); break;
     case 'Escape': hud.toggleBuy(false); break;
     case 'KeyQ': if (me && wasAlive && !hud.wheelOpen) hud.openWheel(me); break;
@@ -278,7 +303,7 @@ document.addEventListener('keyup', e => {
 window.addEventListener('blur', () => { keys.clear(); mouseB = 0; if (hud.wheelOpen) hud.closeWheel(); });
 
 function buttons() {
-  if (!locked() || chatOpen || hud.buyOpen) return 0;
+  if (!locked() || settings.open || chatOpen || hud.buyOpen) return 0;
   const k = c => keys.has(c);
   let b = 0;
   if (k('KeyW') || k('ArrowUp')) b |= B.FWD;
@@ -443,5 +468,5 @@ requestAnimationFrame(frame);
 if (location.search.includes('debug')) {
   window.__bp = { world, get pred() { return pred; }, get me() { return me; }, get latest() { return latest; },
     get view() { return { yaw, pitch }; }, set view(v) { yaw = v.yaw; pitch = v.pitch; }, get pending() { return pending.length; }, get err() { return err; },
-    get weapons() { return weapons; }, get aim() { return aimBlend; }, get fov() { return fov; } };
+    get weapons() { return weapons; }, get aim() { return aimBlend; }, get fov() { return fov; }, get settings() { return settings.state; } };
 }

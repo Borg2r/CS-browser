@@ -1,5 +1,5 @@
 //! Match state and rules: rounds, economy, weapons, grenades, the charge.
-use crate::bot::{self, Bot};
+use crate::bot::{self, Bot, Difficulty};
 use crate::nav::Nav;
 use serde::Deserialize;
 use serde_json::json;
@@ -31,7 +31,14 @@ const SMOKE_RADIUS: f32 = 3.5;
 #[serde(tag = "t")]
 pub enum ClientMsg {
     #[serde(rename = "join")]
-    Join { name: String, team: u8 },
+    Join {
+        name: String,
+        team: u8,
+        #[serde(default)]
+        difficulty: Option<Difficulty>,
+    },
+    #[serde(rename = "set_difficulty")]
+    SetDifficulty { difficulty: Difficulty },
     #[serde(rename = "in")]
     Input {
         s: u32,
@@ -304,6 +311,7 @@ pub struct Game {
     pub time: f64,
     tick_n: u64,
     pub phase: Phase,
+    pub difficulty: Difficulty,
     pub phase_t: f32,
     live_elapsed: f32,
     pub score: [u32; 2],
@@ -385,6 +393,7 @@ impl Game {
             time: 0.0,
             tick_n: 0,
             phase: Phase::Freeze,
+            difficulty: Difficulty::default(),
             phase_t: FREEZE_TIME,
             live_elapsed: 0.0,
             score: [0; 2],
@@ -427,6 +436,41 @@ impl Game {
         }
     }
 
+    fn host(&self) -> Option<&Player> {
+        // Human players retain join order when bots are replaced or teams swap.
+        self.players.iter().find(|p| p.conn.is_some())
+    }
+
+    fn settings(&self, conn: u32) -> String {
+        let host = self.host();
+        json!({
+            "t": "settings",
+            "difficulty": self.difficulty.id(),
+            "host": host.map(|p| p.id),
+            "hostName": host.map(|p| p.name.as_str()),
+            "canChange": host.is_some_and(|p| p.conn == Some(conn)),
+        }).to_string()
+    }
+
+    fn broadcast_settings(&self) {
+        for &conn in self.conns.keys() {
+            self.send(conn, self.settings(conn));
+        }
+    }
+
+    fn set_difficulty(&mut self, conn: u32, difficulty: Difficulty) {
+        if !self.host().is_some_and(|p| p.conn == Some(conn)) {
+            self.send(conn, json!({
+                "t": "settings_error",
+                "m": "Only the match host can change bot difficulty.",
+            }).to_string());
+            self.send(conn, self.settings(conn));
+            return;
+        }
+        self.difficulty = difficulty;
+        self.broadcast_settings();
+    }
+
     // ---------------------------------------------------------------- lobby
 
     pub fn handle(&mut self, m: Incoming) {
@@ -434,6 +478,7 @@ impl Game {
             Incoming::Connect(conn, tx) => {
                 self.conns.insert(conn, tx);
                 self.send(conn, self.hello());
+                self.send(conn, self.settings(conn));
                 self.roster_dirty = true;
             }
             Incoming::Disconnect(conn) => {
@@ -445,6 +490,7 @@ impl Game {
                 }
                 self.fill_bots();
                 self.roster_dirty = true;
+                self.broadcast_settings();
             }
             Incoming::Msg(conn, msg) => self.on_msg(conn, msg),
         }
@@ -453,7 +499,8 @@ impl Game {
     fn on_msg(&mut self, conn: u32, msg: ClientMsg) {
         let pi = self.conn_player.get(&conn).and_then(|id| self.idx(*id));
         match (msg, pi) {
-            (ClientMsg::Join { name, team }, None) => self.join(conn, name, team),
+            (ClientMsg::Join { name, team, difficulty }, None) => self.join(conn, name, team, difficulty),
+            (ClientMsg::SetDifficulty { difficulty }, _) => self.set_difficulty(conn, difficulty),
             (ClientMsg::Input { s, b, y, p, d, it }, Some(i)) => {
                 let q = &mut self.players[i].cmds;
                 if q.len() < 64 {
@@ -478,7 +525,7 @@ impl Game {
         }
     }
 
-    fn join(&mut self, conn: u32, name: String, want: u8) {
+    fn join(&mut self, conn: u32, name: String, want: u8, difficulty: Option<Difficulty>) {
         let mut name: String = name.chars().filter(|c| !c.is_control()).take(16).collect();
         if name.trim().is_empty() {
             name = "Player".into();
@@ -514,12 +561,16 @@ impl Game {
         self.send(conn, json!({"t": "joined", "id": id, "team": team}).to_string());
         self.roster_dirty = true;
         if first {
+            if let Some(difficulty) = difficulty {
+                self.difficulty = difficulty;
+            }
             self.reset_match();
         } else if self.phase == Phase::Freeze {
             let i = self.players.len() - 1;
             let n = self.rng.below(64);
             self.spawn(i, n);
         }
+        self.broadcast_settings();
     }
 
     fn remove_player(&mut self, i: usize) {
@@ -1597,6 +1648,160 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn connect_player(g: &mut Game, conn: u32) -> mpsc::Receiver<String> {
+        let (tx, rx) = mpsc::channel(64);
+        g.handle(Incoming::Connect(conn, tx));
+        rx
+    }
+
+    fn join_player(g: &mut Game, conn: u32, name: &str, difficulty: Option<Difficulty>) {
+        g.handle(Incoming::Msg(conn, ClientMsg::Join { name: name.into(), team: ATK, difficulty }));
+    }
+
+    fn messages(rx: &mut mpsc::Receiver<String>) -> Vec<serde_json::Value> {
+        let mut out = Vec::new();
+        while let Ok(message) = rx.try_recv() {
+            out.push(serde_json::from_str(&message).unwrap());
+        }
+        out
+    }
+
+    fn latest_settings(rx: &mut mpsc::Receiver<String>) -> serde_json::Value {
+        messages(rx).into_iter().rev().find(|m| m["t"] == "settings").unwrap()
+    }
+
+    #[test]
+    fn first_human_owns_settings_and_initial_preference_is_optional() {
+        let mut g = Game::new();
+        let mut rx = connect_player(&mut g, 50);
+        let initial = messages(&mut rx);
+        assert_eq!(initial[0]["t"], "hello");
+        assert_eq!(initial[1], json!({"t": "settings", "difficulty": "medium", "host": null,
+                                    "hostName": null, "canChange": false}));
+        join_player(&mut g, 50, "Host", None);
+        let settings = latest_settings(&mut rx);
+        assert_eq!(settings["difficulty"], "medium");
+        assert_eq!(settings["host"], g.conn_player[&50]);
+        assert_eq!(settings["hostName"], "Host");
+        assert_eq!(settings["canChange"], true);
+        g.handle(Incoming::Disconnect(50));
+
+        let mut next = connect_player(&mut g, 60);
+        join_player(&mut g, 60, "Next host", Some(Difficulty::Expert));
+        assert_eq!(latest_settings(&mut next)["difficulty"], "expert");
+        g.handle(Incoming::Disconnect(60));
+        let mut last = connect_player(&mut g, 70);
+        join_player(&mut g, 70, "No preference", None);
+        assert_eq!(latest_settings(&mut last)["difficulty"], "expert");
+    }
+
+    #[test]
+    fn guests_and_unjoined_visitors_cannot_change_match_difficulty() {
+        let mut g = Game::new();
+        let mut host = connect_player(&mut g, 50);
+        join_player(&mut g, 50, "Host", Some(Difficulty::Hard));
+        let mut guest = connect_player(&mut g, 30);
+        messages(&mut guest);
+        g.handle(Incoming::Msg(30, ClientMsg::SetDifficulty { difficulty: Difficulty::Easy }));
+        let rejected = messages(&mut guest);
+        assert_eq!(rejected.len(), 2);
+        assert_eq!(rejected[0], json!({"t": "settings_error", "m": "Only the match host can change bot difficulty."}));
+        assert_eq!(rejected[1]["difficulty"], "hard");
+        assert_eq!(rejected[1]["canChange"], false);
+        join_player(&mut g, 30, "Guest", Some(Difficulty::Easy));
+        assert_eq!(latest_settings(&mut guest)["difficulty"], "hard");
+        g.handle(Incoming::Msg(30, ClientMsg::SetDifficulty { difficulty: Difficulty::Easy }));
+        let rejected = messages(&mut guest);
+        assert_eq!(rejected[0]["t"], "settings_error");
+        assert_eq!(rejected[1]["difficulty"], "hard");
+        assert_eq!(g.difficulty, Difficulty::Hard);
+
+        // Reconnecting is still joining an existing match, not becoming its host.
+        g.handle(Incoming::Disconnect(30));
+        let mut reconnected = connect_player(&mut g, 31);
+        join_player(&mut g, 31, "Guest again", Some(Difficulty::Expert));
+        let settings = latest_settings(&mut reconnected);
+        assert_eq!(settings["difficulty"], "hard");
+        assert_eq!(settings["host"], g.conn_player[&50]);
+        assert_eq!(settings["canChange"], false);
+        assert_eq!(latest_settings(&mut host)["canChange"], true);
+    }
+
+    #[test]
+    fn host_transfer_follows_human_join_order_and_broadcasts_permissions() {
+        let mut g = Game::new();
+        g.team_size = 3;
+        let mut observer = connect_player(&mut g, 90);
+        let mut host = connect_player(&mut g, 50);
+        join_player(&mut g, 50, "First", Some(Difficulty::Easy));
+        let mut older = connect_player(&mut g, 30);
+        join_player(&mut g, 30, "Older guest", None);
+        let mut newer = connect_player(&mut g, 10);
+        join_player(&mut g, 10, "Newer guest", None);
+        g.handle(Incoming::Disconnect(50));
+        let transfer = latest_settings(&mut older);
+        assert_eq!(transfer["host"], g.conn_player[&30]);
+        assert_eq!(transfer["hostName"], "Older guest");
+        assert_eq!(transfer["canChange"], true);
+        assert_eq!(latest_settings(&mut newer)["canChange"], false);
+
+        // The transferred host can change settings immediately during combat.
+        g.phase = Phase::Live;
+        let phase_time = g.phase_t;
+        g.handle(Incoming::Msg(30, ClientMsg::SetDifficulty { difficulty: Difficulty::Expert }));
+        assert_eq!(g.difficulty, Difficulty::Expert);
+        assert!(g.phase == Phase::Live);
+        assert_eq!(g.phase_t, phase_time);
+        assert_eq!(latest_settings(&mut older)["difficulty"], "expert");
+        assert_eq!(latest_settings(&mut newer)["difficulty"], "expert");
+        messages(&mut host);
+        g.handle(Incoming::Disconnect(30));
+        assert_eq!(latest_settings(&mut newer)["canChange"], true);
+        g.handle(Incoming::Disconnect(10));
+        assert!(g.host().is_none());
+        assert_eq!(latest_settings(&mut observer),
+                   json!({"t": "settings", "difficulty": "expert", "host": null,
+                          "hostName": null, "canChange": false}));
+    }
+
+    #[test]
+    fn difficulty_and_host_survive_rounds_halftime_and_match_reset() {
+        let mut g = Game::new();
+        let _rx = connect_player(&mut g, 50);
+        join_player(&mut g, 50, "Host", Some(Difficulty::Hard));
+        let host_id = g.host().unwrap().id;
+        for _ in 0..15 {
+            play_round(&mut g, ATK);
+            assert_eq!(g.difficulty, Difficulty::Hard);
+            assert_eq!(g.host().unwrap().id, host_id);
+        }
+        play_round(&mut g, DEF);
+        g.reset_match();
+        assert_eq!(g.difficulty, Difficulty::Hard);
+        assert_eq!(g.host().unwrap().id, host_id);
+    }
+
+    #[test]
+    fn difficulty_protocol_accepts_exactly_four_levels_and_legacy_join() {
+        for (id, expected) in [("easy", Difficulty::Easy), ("medium", Difficulty::Medium),
+                               ("hard", Difficulty::Hard), ("expert", Difficulty::Expert)] {
+            let change = json!({"t": "set_difficulty", "difficulty": id}).to_string();
+            assert!(matches!(serde_json::from_str::<ClientMsg>(&change).unwrap(),
+                             ClientMsg::SetDifficulty { difficulty } if difficulty == expected));
+            let join = json!({"t": "join", "name": "Host", "team": 1, "difficulty": id}).to_string();
+            assert!(matches!(serde_json::from_str::<ClientMsg>(&join).unwrap(),
+                             ClientMsg::Join { difficulty: Some(difficulty), .. } if difficulty == expected));
+        }
+        assert!(matches!(serde_json::from_str::<ClientMsg>(r#"{"t":"join","name":"Legacy","team":1}"#).unwrap(),
+                         ClientMsg::Join { difficulty: None, .. }));
+        for invalid in [json!("impossible"), json!("Expert"), json!(1), json!(null)] {
+            let change = json!({"t": "set_difficulty", "difficulty": invalid}).to_string();
+            assert!(serde_json::from_str::<ClientMsg>(&change).is_err());
+        }
+        let invalid_join = json!({"t": "join", "name": "Host", "team": 1, "difficulty": "impossible"}).to_string();
+        assert!(serde_json::from_str::<ClientMsg>(&invalid_join).is_err());
+    }
 
     fn weapon_game(weapon: &str) -> Game {
         let mut g = Game::new();

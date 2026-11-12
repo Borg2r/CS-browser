@@ -71,6 +71,11 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 - 24 firearms (pistols, two akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
   knife, frag / flash / smoke grenades, armour, helmet and defuse kit.
 - Economy with kill rewards, round win / loss bonuses and a buy menu.
+- Bot difficulty: **Easy**, **Medium** (default), **Hard**, and **Expert** change
+  reactions, aiming, firing rhythm and combat movement. The first human player
+  chooses the shared level before joining; the match host can change it live
+  with **F2**. It affects bots on both teams. Host control transfers to the next
+  player when the host leaves, and the level is retained between rounds.
 - Weapon drops and pick-ups, spectating while dead, radar, scoreboard, chat.
 - **Twin Kestrels** and **Twin Mammoths** can be bought under Pistols. Each hand
   has its own magazine and firing rhythm: left click fires the left pistol,
@@ -86,6 +91,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 | Mouse 1 / Mouse 2   | Fire, plant / hold to aim, knife stab         |
 | Mouse 1 / Mouse 2 (akimbo) | Left pistol / right pistol; no aiming  |
 | R / E / G           | Reload / defuse / drop weapon                 |
+| F2                  | Bot difficulty (host can change it)           |
 | B                   | Buy menu (number keys or click)               |
 | Q                   | Hold: weapon wheel · tap: last weapon         |
 | 1–5, mouse wheel    | Primary, sidearm, knife, grenades, charge     |
@@ -104,3 +110,7 @@ For a local functional check of ADS, akimbo input and the new map, run
 `node scripts/features-smoke.mjs http://127.0.0.1:8082` against a fresh local
 server on port 8082. This test joins temporary guest players and fires weapons;
 run it on a development server rather than during a match with friends.
+
+`node scripts/difficulty-smoke.mjs http://127.0.0.1:8086` checks difficulty
+selection, synchronization, guest permissions and host transfer on an idle
+development server. It temporarily changes the shared bot level.
