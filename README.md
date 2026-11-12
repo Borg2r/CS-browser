@@ -30,6 +30,15 @@ filled with bots; a joining player replaces a bot.
 To play over the internet, run the server on a host with a public address (put
 it behind an HTTPS reverse proxy; the client switches to `wss://` on its own).
 
+A `Dockerfile` is included for container hosts (Fly.io, Railway, Render, a VPS):
+
+```sh
+docker build -t breachpoint . && docker run -p 8080:8080 breachpoint
+```
+
+The host must support WebSockets and keep a single long-running instance
+(the match lives in memory).
+
 After changing `crates/sim` or `crates/predict`, run `./build-wasm.sh` to
 refresh `client/predict.wasm`. Tests: `cargo test`.
 
