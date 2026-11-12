@@ -6,51 +6,68 @@ pub const CELL: f32 = 2.0;
 
 /// Sirocco: a sun-bleached town with west market tunnels, offset middle
 /// gates, an eastern long street, and a short arcade into the A courtyard.
+/// Broad outer avenues and two separately screened spawn courtyards give
+/// both teams room to spread out before reaching the contested approaches.
+/// The original central landmarks stay fixed; six tiles of padding on each
+/// edge extend the town to 116 by 104 metres. Tall buildings shield both
+/// spawn courts, with two wide side exits that turn around their cover.
 /// `#`/`H` building blocks, `D` timber gate leaves, `c`/`k` supply crates,
 /// `=` stone breastwork, `A`/`B` sites, `1`/`2` team spawns, `.` lanes.
 /// Walk routes stay at ground level so native and WASM movement and the
 /// bot navigation grid share exactly the same traversal rules.
-pub const ROWS: [&str; 40] = [
-    "##############################################",
-    "######HHHHHH######..........##HHHHHH##########",
-    "##BBBBBBBBBBBB####..222222..##HAAAAAAAAAAAAA##",
-    "##BkkBBBBBBBBB####..222222..##HAAkkAAAAAAAAA##",
-    "##BkkBBBBBBBBB####..........##HAAkkAAAAAAAAA##",
-    "##BBBBBBBBB........................AAAAAAAAA##",
-    "##BBBcBBBBB........................AAAAAAAAA##",
-    "#HBBBBBBBBkk.......................AAAAAkkAA##",
-    "#HBBBBBBBBkk....###........HHH#AAAAccA..kk..##",
-    "#HB......BB.....###........HHH#AAAAAAA......##",
-    "#HB......BB.....###................AAA......##",
-    "#HH......##..............c.........###......##",
-    "#HH......##........................###....=.##",
-    "#HH......##........................###....=.##",
-    "###......#####................########......H#",
-    "###......#########H...........########......H#",
-    "###......#########H.........=.########......H#",
-    "###......#########HHD...D##.=.########..kk..H#",
-    "###......#########HHD...D##.=.########..kk..H#",
-    "###......#########H...........########......H#",
-    "###......#########H...........########......H#",
-    "###......###HHHHHH#...........######HH......##",
-    "###........................#########HH......##",
-    "###...........==...........#########HH......##",
-    "###.................kk.....#########HH......##",
-    "###.................kk.....#########HHD...D###",
-    "###...........HHHH#........#########HHD...D###",
-    "###...........HHHH#........#########HH......##",
-    "###...........##.............#HHHHHH##......##",
-    "###.cc......................................##",
-    "###.........................c...............##",
-    "###.........c...............................##",
-    "######HHH...c...............................##",
-    "######HHH.........11111111..................##",
-    "######HHH.........11111111................####",
-    "#HHHHH###.........11111111...H################",
-    "#HHHHH##########.............H################",
-    "#HHHHH##########.............H################",
-    "#HHHHH##################HHHHHH################",
-    "##############################################",
+pub const ROWS: [&str; 52] = [
+    "##########################################################",
+    "#################........................#################",
+    "#################........................#################",
+    "#################.........222222.........#################",
+    "#################.........222222.........#################",
+    "#################........................#################",
+    "#################....HHHHHHHHHHHHHHHH....#################",
+    "############HHHHH....HHHHHHHHHHHHHHHH....H################",
+    "########BBBBBBBBBBBB.HHHHHHHHHHHHHHHHAAAAAAAAAAAAA########",
+    "########BkkBBBBBBBBB.###..........##HAA..AAAAAAAAA########",
+    "########BkkBBBBBBBBB.###..........##HAA..AAAAAAAAA......##",
+    "##......BBBBBBBBB........................AAAAAAAAA......##",
+    "##......BBB.BBBBB........................AAAAAAAAA......##",
+    "##......BBBBBBBBkk.......................AAAAAkkAA......##",
+    "##......BBBBBBBBkk....###........HHH#AAAAccA..kk......cc##",
+    "##......B......BB.....###........HHH#AAAAAAA..........cc##",
+    "##......B......BB.....###................AAA............##",
+    "##......H......##..............c.........###............##",
+    "##......H......##........................###....=.......##",
+    "##......H......##........................###....=.......##",
+    "##......#......#####................########............##",
+    "##kk....#......#########H...........########............##",
+    "##kk....#......#########H.........=.########..........kk##",
+    "##......#......#########HHD...D##.=.########..kk......kk##",
+    "##......#......#########HHD...D##.=.########..kk........##",
+    "##......#......#########H...........########............##",
+    "##......#......#########H...........########............##",
+    "##cc....#......###HHHHHH#...........######HH............##",
+    "##cc....#........................#########HH............##",
+    "##......#...........==...........#########HH............##",
+    "##......#.................kk.....#########HH............##",
+    "##......#.................kk.....#########HHD...HHH.....##",
+    "##......#...........HHHH#........#########HHD...HHH.....##",
+    "##......#...........HHHH#........#########HH............##",
+    "##..................##.............#HHHHHH##............##",
+    "##......................................................##",
+    "##................................c.....................##",
+    "##..kk............c..................................cc.##",
+    "##..kk............c..................................cc.##",
+    "##......................................................##",
+    "##......................................................##",
+    "##..................HHHHHHHHHHHHHHHHHH..................##",
+    "#######HHHHH###.....HHHHHHHHHHHHHHHHHH..................##",
+    "#######HHHHH###.....HHHHHHHHHHHHHHHHHH.....###############",
+    "#######HHHHH###.....HHHHHHHHHHHHHHHHHH.....###############",
+    "###############............................###############",
+    "###############............................###############",
+    "###############..........11111111..........###############",
+    "###############..........11111111..........###############",
+    "###############..........11111111..........###############",
+    "###############............................###############",
+    "##########################################################",
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -205,6 +222,14 @@ impl Map {
     pub fn site_at(&self, x: f32, z: f32) -> Option<usize> {
         self.sites.iter().position(|s| s.contains(x, z))
     }
+
+    /// Face the nearest broad courtyard exit instead of the protective front
+    /// building. Team indices match `spawns`: 0 attackers, 1 defenders.
+    pub fn spawn_yaw(&self, team: usize, position: [f32; 2]) -> f32 {
+        let side = if position[0] < 0.0 { -1.0 } else { 1.0 };
+        let target = if team == 0 { [side * 23.0, 40.0] } else { [side * 20.0, -42.0] };
+        (position[0] - target[0]).atan2(position[1] - target[1])
+    }
 }
 
 pub fn map() -> &'static Map {
@@ -215,7 +240,7 @@ pub fn map() -> &'static Map {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physics::{collides, H_STAND};
+    use crate::physics::{collides, view_dir, H_STAND};
     use std::collections::VecDeque;
 
     #[test]
@@ -240,6 +265,7 @@ mod tests {
         }
         for team in &m.spawns {
             assert!(team.len() >= 5);
+            assert_ne!(team.len() % 5, 0, "spawn count must be coprime to the server's five-slot stride");
             for &spawn in team {
                 let (c, r) = cell(spawn);
                 assert!(walk[r * w + c] && seen[r * w + c], "unreachable spawn: {spawn:?}");
@@ -260,6 +286,21 @@ mod tests {
         for (x, z) in [(-34.0, -15.0), (-34.0, 8.0), (-1.0, -4.0), (35.0, 12.0)] {
             assert!(!collides(&m, &[x, 0.01, z], H_STAND), "blocked passage at {x},{z}");
             assert!(m.boxes.iter().any(|b| b.min[1] > H_STAND && x >= b.min[0] && x <= b.max[0] && z >= b.min[2] && z <= b.max[2]), "passage lacks a physical ceiling");
+        }
+    }
+
+    #[test]
+    fn spawn_facing_offers_twelve_metres_of_clear_courtyard() {
+        let m = Map::build();
+        for (team, spawns) in m.spawns.iter().enumerate() {
+            for &spawn in spawns {
+                let direction = view_dir(m.spawn_yaw(team, spawn), 0.0);
+                for step in 1..=24 {
+                    let distance = step as f32 * 0.5;
+                    let position = [spawn[0] + direction[0] * distance, 0.01, spawn[1] + direction[2] * distance];
+                    assert!(!collides(&m, &position, H_STAND), "spawn {spawn:?} faces nearby obstruction at {position:?}");
+                }
+            }
         }
     }
 }

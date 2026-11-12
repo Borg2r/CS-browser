@@ -590,7 +590,7 @@ impl Game {
         p.hp = 100;
         p.has_bomb = false;
         p.st = PState { pos: [sp[0], 0.01, sp[1]], ..Default::default() };
-        p.yaw = if team == ATK { 0.0 } else { std::f32::consts::PI };
+        p.yaw = self.map.spawn_yaw((team - 1) as usize, sp);
         p.pitch = 0.0;
         p.buttons = 0;
         p.prev_buttons = 0;

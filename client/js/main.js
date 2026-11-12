@@ -318,7 +318,8 @@ function frame(tms) {
 
   if (!joined || !latest) {
     const a = now * 0.06;
-    cam.position.set(Math.sin(a) * 62, 46, Math.cos(a) * 62); cam.lookAt(0, 0, 0);
+    const radius = world.overviewRadius || 62, height = world.overviewHeight || 46;
+    cam.position.set(Math.sin(a) * radius, height, Math.cos(a) * radius); cam.lookAt(0, 0, 0);
     if (latest && hello) drawRemote(now, dt, -1);
     aimBlend = 0;
     world.render(dt, { firstPerson: false, aim: 0 });
@@ -384,7 +385,7 @@ function frame(tms) {
         hidden = t.id; specName = `Spectating ${pname(t.id)} — click for next`;
         world.setViewmodel(weapons[t.w]);
       }
-    } else { cam.position.set(0, 60, 40); cam.lookAt(0, 0, 0); }
+    } else { cam.position.set(0, (world.overviewHeight || 46) * 1.3, (world.overviewRadius || 62) * .65); cam.lookAt(0, 0, 0); }
   }
 
   const aiming = !!(alive && me.sc && w.ads && !w.dual && me.rl <= 0);

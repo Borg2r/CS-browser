@@ -97,6 +97,7 @@ export class World {
     this.camera.rotation.order = 'YXZ';
     this.scene.add(new THREE.HemisphereLight(0xdbeef2, 0x887050, 1.7));
     const sun = new THREE.DirectionalLight(0xffedcc, 3.0);
+    this.sun = sun;
     sun.position.set(-42, 65, 26); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 10, far: 220 });
@@ -152,6 +153,14 @@ export class World {
   }
 
   buildMap(map) {
+    // Frame and light the whole playable town as its footprint changes.
+    this.overviewRadius = Math.max(map.w, map.h) * 1.35;
+    this.overviewHeight = Math.max(map.w, map.h) * 1.05;
+    const shadowExtent = Math.max(map.w, map.h) * 1.35 + 8;
+    Object.assign(this.sun.shadow.camera, {
+      left: -shadowExtent, right: shadowExtent, top: shadowExtent, bottom: -shadowExtent,
+    });
+    this.sun.shadow.camera.updateProjectionMatrix();
     const mats = ['ground', 'wall', 'container', 'crate', 'barrier'];
     const tile = [5, 5, 3.4, 1.5, 2];
     const buf = mats.map(() => ({ p: [], n: [], u: [], c: [], i: [] }));

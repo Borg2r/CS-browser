@@ -60,6 +60,9 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 - Map **Sirocco**: an original sandstone town with two objective courtyards,
   long and short approaches, central double doors, and a covered tunnel to B.
   Its lanes recall classic desert tactical-shooter maps, with an original layout.
+- Expanded 116 × 104 m footprint with a wider long street and a western avenue.
+  Both teams start in sheltered courtyards with two exits around solid buildings;
+  opposing spawns have no direct or wall-penetrating firing line.
 - Detailed procedural weapons and operators, articulated equipment, warm desert
   lighting, and architectural scenery. No external model downloads are needed.
 - 30 rounds: sides swap at half-time after 15, first team to 16 wins.

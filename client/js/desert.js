@@ -80,6 +80,8 @@ function signAtlas() {
   const labels = [
     ['SIROCCO', 'THE OLD QUARTER'], ['A  →', 'LONG STREET'], ['←  B', 'COVERED MARKET'], ['MID', 'THE DOUBLE GATE'],
     ['SOUK', 'SPICES & TEXTILES'], ['MEDINA', 'OLD TOWN'], ['A  ↑', 'SHORT ARCADE'], ['B', 'TUNNEL ENTRANCE'],
+    ['← B       A →', 'TUNNELS                 LONG STREET'],
+    ['← A       B →', 'A COURTYARD            B COURTYARD'],
   ];
   return texture((g, w) => {
     labels.forEach(([title, subtitle], i) => {
@@ -88,14 +90,14 @@ function signAtlas() {
       g.strokeStyle = i % 3 === 0 ? '#d5caa8' : '#734b32'; g.lineWidth = 3; g.strokeRect(x + 12, y + 12, 488, 136);
       g.fillStyle = i % 3 === 0 ? '#f7ebcb' : '#733d2e';
       g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = 'bold 61px Georgia, serif';
-      g.fillText(title, x + 256, y + 64);
+      g.fillText(title, x + 256, y + 64, 460);
       g.font = '16px sans-serif'; g.fillText(subtitle, x + 256, y + 120);
       for (let j = 0; j < 180; j++) {
         g.fillStyle = 'rgba(80,54,28,.1)';
         g.fillRect(x + noise(i * 500 + j) * 512, y + noise(i * 500 + j + 200) * 160, 2, 1);
       }
     });
-  }, 2048, 320);
+  }, 2048, 480);
 }
 
 export function buildDesert(scene, map) {
@@ -142,7 +144,7 @@ export function buildDesert(scene, map) {
     const offset = signPositions.length / 3;
     for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) signPositions.push(...surfacePoint(f, u + dx * w / 2, y + dy * h / 2, .15));
     const col = label % 4, row = Math.floor(label / 4), u0 = col / 4, u1 = (col + 1) / 4;
-    const v0 = 1 - (row + 1) / 2, v1 = 1 - row / 2;
+    const v0 = 1 - (row + 1) / 3, v1 = 1 - row / 3;
     signUvs.push(u0, v0, u1, v0, u1, v1, u0, v1); signIndices.push(offset, offset + 1, offset + 2, offset, offset + 2, offset + 3);
   }
 
@@ -267,6 +269,17 @@ export function buildDesert(scene, map) {
     if (p[0] > 4 && p[0] < 22 && p[2] < 4) label = 6;
     sign(f, f.u, 2.1, Math.min(2.5, f.len - .5), .78, label); signCount++;
   }
+  // Mark both exits on the buildings screening the spawn courtyards. The
+  // defender board reverses the directions because that team faces south.
+  for (const south of [true, false]) {
+    const screen = wallBoxes.find(b => b[0] < 0 && b[3] > 0 && b[4] >= 7 &&
+      (south ? b[2] > bounds.z * .5 && b[5] < bounds.z - 3 : b[5] < -bounds.z * .5 && b[2] > -bounds.z + 3));
+    if (!screen) continue;
+    const direction = south ? 1 : -1;
+    sign({ x: 0, z: south ? screen[5] : screen[2], tx: direction, tz: 0, nx: 0, nz: direction },
+      0, 2.3, 6.4, 1.2, south ? 8 : 9);
+    signCount++;
+  }
   if (signCount) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(signPositions, 3));
@@ -302,27 +315,28 @@ export function buildDesert(scene, map) {
 
   // Everything in the skyline sits beyond the impassable boundary walls.
   for (let i = 0; i < 24; i++) {
-    const angle = i / 24 * TAU, radius = 92 + noise(i + 180) * 25;
+    const angle = i / 24 * TAU, radius = Math.hypot(bounds.x, bounds.z) + 32 + noise(i + 180) * 25;
     const h = 14 + noise(i + 90) * 24;
     stamp('mountain', 'skyline', [0xc9ae86, 0xd5b990, 0xbda783][i % 3], [Math.cos(angle) * radius, h * .28 - 4, Math.sin(angle) * radius], [25 + noise(i) * 30, h, 27 + noise(i + 1) * 25], [0, angle, .05]);
   }
   for (let i = 0; i < 16; i++) {
-    const x = -39 + i * 5.4, z = -bounds.z - 6 - noise(i + 90) * 6;
+    const x = -(bounds.x - 7) + i * (bounds.x - 7) * 2 / 15, z = -bounds.z - 6 - noise(i + 90) * 6;
     const h = 8 + noise(i + 70) * 7;
     box('stone', [0xc5ad86, 0xd5bd95, 0xbda27d][i % 3], [x, h / 2, z], [4 + noise(i + 1) * 3, h, 5 + noise(i + 2) * 3]);
     box('stone', 0xdfc59b, [x, h + .15, z], [4.5 + noise(i + 1) * 3, .3, 5.5 + noise(i + 2) * 3]);
     for (const y of [h - 2, h - 4]) for (const dx of [-1.1, 1.1]) box('shadow', 0x475147, [x + dx, y, z + (5 + noise(i + 2) * 3) / 2 + .03], [.65, 1.1, .06]);
   }
   // A distinctive tiled dome and slender tower orient the northern skyline.
-  box('stone', 0xdbc39a, [-12, 6, -53], [8, 12, 8]);
-  stamp('dome', 'stone', 0x70958b, [-12, 12, -53], [9, 7, 9]);
-  stamp('cylinder', 'metal', 0xcfb67b, [-12, 15.8, -53], [.12, 1.4, .12]);
-  box('stone', 0xd6bd92, [-20, 9, -54], [2.5, 18, 2.5]);
-  box('stone', 0xe7cfa7, [-20, 16.3, -54], [3.4, .5, 3.4]);
-  stamp('dome', 'stone', 0x789887, [-20, 18, -54], [3.2, 2.3, 3.2]);
+  const landmarkZ = -bounds.z - 13;
+  box('stone', 0xdbc39a, [-12, 6, landmarkZ], [8, 12, 8]);
+  stamp('dome', 'stone', 0x70958b, [-12, 12, landmarkZ], [9, 7, 9]);
+  stamp('cylinder', 'metal', 0xcfb67b, [-12, 15.8, landmarkZ], [.12, 1.4, .12]);
+  box('stone', 0xd6bd92, [-20, 9, landmarkZ - 1], [2.5, 18, 2.5]);
+  box('stone', 0xe7cfa7, [-20, 16.3, landmarkZ - 1], [3.4, .5, 3.4]);
+  stamp('dome', 'stone', 0x789887, [-20, 18, landmarkZ - 1], [3.2, 2.3, 3.2]);
 
   for (let i = 0; i < 10; i++) {
-    const side = i < 5 ? -1 : 1, x = side * (bounds.x + 3.5 + noise(i) * 4), z = -30 + i % 5 * 14;
+    const side = i < 5 ? -1 : 1, x = side * (bounds.x + 3.5 + noise(i) * 4), z = -bounds.z + 10 + i % 5 * (bounds.z * 2 - 20) / 4;
     const h = 8 + noise(i + 80) * 2.4;
     stamp('trunk', 'timber', 0x8f7750, [x, h / 2, z], [.7, h, .7], [0, 0, side * .035]);
     for (let ring = 0; ring < 9; ring++) stamp('cylinder', 'timber', 0x9a835b, [x - side * .035 * (ring - 4), .8 + ring * (h - 1) / 9, z], [.45 - ring * .013, .10, .45 - ring * .013]);
