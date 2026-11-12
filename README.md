@@ -21,6 +21,11 @@ cargo run --release -p server      # then open http://localhost:8080
 Everyone who opens the same address joins the same match. Empty seats are
 filled with bots; a joining player replaces a bot.
 
+**Play online with friends:** see [DEPLOY.md](DEPLOY.md) for the ready-to-use
+Render setup and other hosting options. Players need no account. The menu's
+**Copy invite link** button shares the server address. Use a desktop browser
+with a keyboard and mouse.
+
 | Variable     | Default       | Meaning                              |
 |--------------|---------------|--------------------------------------|
 | `PORT`       | `8080`        | HTTP / WebSocket port                |
@@ -38,6 +43,14 @@ docker build -t breachpoint . && docker run -p 8080:8080 breachpoint
 
 The host must support WebSockets and keep a single long-running instance
 (the match lives in memory).
+
+The Docker build compiles both the server and prediction WASM from the same
+source using Rust 1.99.1 and the lockfile, then runs as a non-root user.
+`GET /healthz` returns `ok`. Test a deployed server with Node.js 22+:
+
+```sh
+node scripts/smoke.mjs https://your-game-host
+```
 
 After changing `crates/sim` or `crates/predict`, run `./build-wasm.sh` to
 refresh `client/predict.wasm`. Tests: `cargo test`.

@@ -37,6 +37,7 @@ async fn main() {
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
 
     let app = Router::new()
+        .route("/healthz", get(|| async { "ok" }))
         .route("/ws", get(ws_handler))
         .fallback_service(ServeDir::new(dir))
         .with_state(App { tx, next_conn: Arc::new(AtomicU32::new(1)) });

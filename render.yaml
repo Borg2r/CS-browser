@@ -1,0 +1,17 @@
+# Import this repository as a Render Blueprint.
+# Free is suitable for trying the game; choose an always-on paid plan in Render
+# for regular sessions without cold starts. Only the host needs a Render account.
+services:
+  - type: web
+    name: breachpoint
+    branch: codex/playable-online
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: TEAM_SIZE
+        value: "5"

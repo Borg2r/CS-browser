@@ -36,7 +36,39 @@ $('sens').oninput = $('vol').oninput = $('name').onchange = applySettings; apply
 
 // ---- prediction module (same Rust movement code as the server)
 let wasm = null;
-WebAssembly.instantiate(await (await fetch('predict.wasm')).arrayBuffer()).then(r => { wasm = r.instance.exports; });
+let loadingError = '';
+let serverReady = false;
+function updateReady() {
+  const ready = !!wasm && serverReady && ws?.readyState === WebSocket.OPEN;
+  for (const button of document.querySelectorAll('.teams button')) button.disabled = !ready;
+  $('status').textContent = loadingError || (ready ? 'Connected — pick a side' : !wasm ? 'Loading game…' : 'Connecting to server…');
+}
+async function loadPrediction() {
+  try {
+    const response = await fetch('predict.wasm');
+    if (!response.ok) throw new Error(`Prediction download: HTTP ${response.status}`);
+    wasm = (await WebAssembly.instantiate(await response.arrayBuffer())).instance.exports;
+  } catch (error) {
+    loadingError = 'Could not load the game. Reload the page to try again.';
+    console.error(error);
+  }
+  updateReady();
+}
+loadPrediction();
+
+$('invite').onclick = async () => {
+  const link = new URL('.', location.href).href;
+  try {
+    await navigator.clipboard.writeText(link);
+    $('invite-status').textContent = 'Link copied — send it to your friends!';
+  } catch {
+    $('invite-link').value = link;
+    $('invite-link').classList.remove('hidden');
+    $('invite-link').focus();
+    $('invite-link').select();
+    $('invite-status').textContent = 'Copy this link and send it to your friends:';
+  }
+};
 function simStep(st, buttons, y, dt, speed) {
   new Float32Array(wasm.memory.buffer, wasm.state_ptr(), 9).set(st);
   wasm.sim_step(buttons, y, dt, speed);
@@ -47,10 +79,13 @@ function simStep(st, buttons, y, dt, speed) {
 function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
 function connect() {
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-  ws.onopen = () => { $('status').textContent = 'Connected — pick a side'; };
+  ws.onopen = updateReady;
   ws.onclose = () => {
+    serverReady = false;
+    updateReady();
     joined = false; $('menu').classList.remove('hidden'); $('hud').classList.add('hidden');
-    $('status').textContent = 'Disconnected — reconnecting…'; document.exitPointerLock?.();
+    if (!loadingError) $('status').textContent = 'Disconnected — reconnecting…';
+    document.exitPointerLock?.();
     setTimeout(connect, 2000);
   };
   ws.onmessage = e => {
@@ -61,9 +96,12 @@ function connect() {
       case 'r': roster = new Map(m.pl.map(p => [p.id, p])); break;
       case 'hello':
         if (!hello) { hello = m; weapons = m.weapons; world.buildMap(m.map); hud.init(m); }
+        serverReady = true;
+        updateReady();
         break;
       case 'joined':
         myId = m.id; joined = true; snaps = []; pending = []; pred = null; wasAlive = false; resetView = true;
+        timeOffset = -Infinity;
         $('menu').classList.add('hidden'); $('hud').classList.remove('hidden');
         break;
       case 'full': $('status').textContent = 'Server is full'; break;

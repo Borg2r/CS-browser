@@ -45,11 +45,15 @@
   <label>Mouse sensitivity <input id="sens" type="range" min="0.2" max="4" step="0.1" value="1"></label>
   <label>Volume <input id="vol" type="range" min="0" max="1" step="0.05" value="0.6"></label>
   <div class="teams">
-    <button data-team="1" class="atk">Attackers</button>
-    <button data-team="0">Auto-assign</button>
-    <button data-team="2" class="def">Defenders</button>
+    <button data-team="1" class="atk" disabled>Attackers</button>
+    <button data-team="0" disabled>Auto-assign</button>
+    <button data-team="2" class="def" disabled>Defenders</button>
   </div>
-  <p id="status">Connecting…</p>
+  <p id="status" role="status">Loading game…</p>
+  <button id="invite" type="button">Copy invite link</button>
+  <p id="invite-status" role="status">Share this server with friends. No account needed.</p>
+  <input id="invite-link" class="hidden" aria-label="Invite link" readonly>
+  <p class="keys">Play on a computer with a keyboard and mouse. Up to 10 players; bots fill empty seats.</p>
   <div class="keys">
     <b>WASD</b> move &middot; <b>Space</b> jump &middot; <b>C / Ctrl</b> crouch &middot; <b>Shift</b> walk &middot;
     <b>Mouse</b> aim / fire / scope &middot; <b>R</b> reload &middot; <b>B</b> buy &middot;

@@ -19,6 +19,9 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 .teams button:hover:not(:disabled) { background: #223040; }
 .teams button:disabled { opacity: .4; cursor: default; }
 #status { min-height: 1.2em; opacity: .8; margin: 4px 0; }
+#invite { background: #223040; border: 1px solid #456; color: inherit; border-radius: 4px; padding: 8px 16px; cursor: pointer; }
+#invite-status { font-size: 13px; opacity: .75; margin: 0; }
+#menu #invite-link { width: min(480px, 90vw); }
 .keys { max-width: 720px; font-size: 13px; line-height: 1.7; opacity: .75; }
 .keys b { color: #fff; background: #1d2835; padding: 1px 6px; border-radius: 3px; }
 
