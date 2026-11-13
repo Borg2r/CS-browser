@@ -173,7 +173,7 @@ export class Hud {
     $('hint').textContent = s.hint || '';
     $('progress').classList.toggle('hidden', !s.progress);
     if (s.progress) { $('progressBar').style.width = s.progress[0] * 100 + '%'; $('progressLabel').textContent = s.progress[1]; }
-    $('lock').classList.toggle('hidden', s.locked || this.buyOpen);
+    $('lock').classList.toggle('hidden', s.locked || this.buyOpen || s.menuOpen);
     if (!me) return;
     $('hp').textContent = me.hp; $('hp').classList.toggle('low', me.hp <= 25);
     $('armor').textContent = me.ar; $('armorLabel').textContent = me.he ? 'ARMOR+H' : 'ARMOR';

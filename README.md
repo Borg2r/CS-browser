@@ -64,7 +64,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   aisles and a bridge. Norheim adapts the showroom, atrium, office rows, meeting
   room and warehouse into a spacious, single-floor playable layout.
 - The first player chooses the map before joining. The host can switch maps
-  through **F2 → Operation → Start selected map**. This starts a new match for
+  through **Esc → Operation → Start selected map**. This starts a new match for
   everyone, resetting scores and equipment while keeping connected players,
   teams and bot difficulty. Other players see the active map and join it.
 - Spawn courtyards block direct and wall-penetrating shots from opposing spawns,
@@ -84,8 +84,16 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 - Bot difficulty: **Easy**, **Medium** (default), **Hard**, and **Expert** change
   reactions, aiming, firing rhythm and combat movement. The first human player
   chooses the shared level before joining; the match host can change it live
-  with **F2**. It affects bots on both teams. Host control transfers to the next
-  player when the host leaves, and the level is retained between rounds.
+  from the **Esc** pause menu (or **F2**). It affects bots on both teams. Host
+  control transfers to the next player when the host leaves, and the level is
+  retained between rounds.
+- **Esc pause menu:** resume play, choose a map, adjust bot difficulty, restart
+  the current round, or skip the remaining bot fight. The online match keeps
+  running while the menu is open. The host controls maps, difficulty and round
+  restarts. Restarting restores the round's starting money, equipment and stats
+  without changing the score. Once all humans are dead, any joined spectator
+  can fast-forward the bots to their actual result and the next round; scoring,
+  side swaps and match completion follow the normal rules.
 - Weapon drops and pick-ups, spectating while dead, radar, scoreboard, chat.
 - Four akimbo options: **Twin Kestrels** and **Twin Mammoths** under Pistols;
   **Dual MP7** under SMGs ($2,600, 40 rounds per hand); and **Twin Lever-Action**
@@ -125,7 +133,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 | Mouse 1 / Mouse 2   | Fire, plant / hold to aim, knife stab         |
 | Mouse 1 / Mouse 2 (akimbo) | Left gun / right gun; no aiming  |
 | R / E / G           | Reload / defuse / drop weapon                 |
-| F2                  | Map and bot difficulty (host controls both)   |
+| Esc / F2            | Pause menu: map, difficulty and round controls |
 | B                   | Buy menu (number keys or click)               |
 | Q                   | Hold: weapon wheel · tap: last weapon         |
 | 1–5, mouse wheel    | Primary, sidearm, knife, grenades, charge     |
@@ -157,3 +165,8 @@ fresh development server. It changes the shared map and resets matches.
 compatibility, aiming speed and attachment preservation through drop/pickup on
 an idle development server. Titan damage and bolt-cycle regressions run with
 `cargo test -p server`.
+
+`node scripts/rounds-smoke.mjs http://127.0.0.1:8098` checks pause-menu round
+permissions, restart rollback, stale input rejection and actual bot-only skips
+on a fresh development server. It restarts rounds and uses grenades to eliminate
+the test players before skipping; normal scoring and respawn are verified.

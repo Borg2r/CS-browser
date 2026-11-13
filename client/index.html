@@ -17,7 +17,7 @@
     <span id="timer">0:00</span>
     <span id="scoreD" class="def">0</span>
     <div id="alive"></div>
-    <button id="bot-settings-button" type="button" title="Map and bot settings (F2)">Match settings · F2</button>
+    <button id="bot-settings-button" type="button" title="Pause menu: maps, difficulty and round controls (Esc / F2)">Pause menu · Esc / F2</button>
   </div>
   <div id="killfeed"></div>
   <div id="chatlog"></div>
@@ -85,26 +85,54 @@
     <b>WASD</b> move &middot; <b>Space</b> jump &middot; <b>C / Ctrl</b> crouch &middot; <b>Shift</b> walk &middot;
     <b>LMB</b> fire &middot; <b>Hold RMB</b> aim &middot; <b>R</b> reload &middot; <b>B</b> buy &middot;
     <b>Q</b> hold: weapon wheel, tap: last weapon &middot; <b>1-5</b> / wheel: weapons &middot;
-    <b>E</b> defuse &middot; <b>G</b> drop &middot; <b>Tab</b> scores &middot; <b>T</b> chat &middot; <b>F2</b> maps &amp; difficulty<br>
+    <b>E</b> defuse &middot; <b>G</b> drop &middot; <b>Tab</b> scores &middot; <b>T</b> chat &middot; <b>Esc / F2</b> pause menu<br>
     <b>Akimbo</b> left click = left gun &middot; right click = right gun &middot; no aiming
   </div>
 </div>
-<dialog id="match-settings" aria-labelledby="settings-title">
-  <h2 id="settings-title">Match settings</h2>
-  <p id="difficulty-owner"></p>
-  <section class="match-map-setting">
-    <label for="match-map">Operation</label>
-    <select id="match-map" aria-describedby="match-map-description map-reset-note"></select>
-    <p id="match-map-description"></p>
-    <small id="map-reset-note">Changing map starts a new match for everyone. Teams and bot difficulty stay the same.</small>
-    <div class="settings-actions"><button id="map-apply" type="button">Start selected map</button></div>
-    <p id="map-feedback" role="status" aria-live="polite"></p>
-  </section>
-  <label for="match-difficulty">Bot difficulty</label>
-  <select id="match-difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option><option value="expert">Expert</option></select>
-  <p id="match-difficulty-description"></p>
-  <p id="difficulty-feedback" role="status" aria-live="polite"></p>
-  <div class="settings-actions"><button id="difficulty-apply" type="button">Apply</button><button id="settings-resume" type="button">Back to game</button></div>
+<dialog id="match-settings" aria-labelledby="settings-title" aria-describedby="pause-note">
+  <header class="pause-header">
+    <div>
+      <span class="pause-kicker">BREACHPOINT · MATCH CONTROL</span>
+      <h2 id="settings-title">Pause menu</h2>
+      <p id="pause-note">Online match continues while menu is open.</p>
+    </div>
+    <button id="settings-resume" class="pause-resume" type="button"><span>Back to game</span><kbd>Esc</kbd></button>
+  </header>
+  <div class="pause-body">
+    <p id="difficulty-owner" class="pause-owner"></p>
+    <div class="pause-settings-grid">
+      <section class="pause-panel match-map-setting" aria-labelledby="pause-map-heading">
+        <div class="pause-panel-heading"><h3 id="pause-map-heading"><label for="match-map">Map selection</label></h3><span class="pause-host-label">HOST</span></div>
+        <select id="match-map" disabled aria-describedby="match-map-description map-reset-note"></select>
+        <p id="match-map-description" class="pause-description"></p>
+        <small id="map-reset-note" class="pause-help">Starts a new match for everyone. Teams and bot difficulty stay the same.</small>
+        <div class="settings-actions"><button id="map-apply" type="button" disabled>Start selected map</button></div>
+        <p id="map-feedback" class="pause-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+      </section>
+      <section class="pause-panel" aria-labelledby="pause-difficulty-heading">
+        <div class="pause-panel-heading"><h3 id="pause-difficulty-heading"><label for="match-difficulty">Bot difficulty</label></h3><span class="pause-host-label">HOST</span></div>
+        <select id="match-difficulty" disabled aria-describedby="match-difficulty-description difficulty-change-note"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option><option value="expert">Expert</option></select>
+        <p id="match-difficulty-description" class="pause-description"></p>
+        <small id="difficulty-change-note" class="pause-help">Applies immediately to every bot in this match.</small>
+        <div class="settings-actions"><button id="difficulty-apply" type="button" disabled>Apply difficulty</button></div>
+        <p id="difficulty-feedback" class="pause-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+      </section>
+    </div>
+    <section class="pause-rounds" aria-labelledby="pause-round-heading">
+      <div class="pause-round-heading"><h3 id="pause-round-heading">Round controls</h3><p id="round-status">Waiting for round state…</p></div>
+      <div class="pause-round-grid">
+        <div class="pause-round-action">
+          <button id="round-restart" type="button" disabled aria-describedby="round-restart-note">Restart round</button>
+          <small id="round-restart-note">Host only. Restore the beginning of this round.</small>
+        </div>
+        <div class="pause-round-action">
+          <button id="round-skip" type="button" disabled aria-describedby="round-skip-note">Skip bot-only round</button>
+          <small id="round-skip-note">Available when all human players are out.</small>
+        </div>
+      </div>
+      <p id="round-feedback" class="pause-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+    </section>
+  </div>
 </dialog>
 <script type="module" src="js/main.js"></script>
 </body>

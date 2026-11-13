@@ -55,6 +55,10 @@ pub enum ClientMsg {
     SetDifficulty { difficulty: Difficulty },
     #[serde(rename = "set_map")]
     SetMap { #[serde(deserialize_with = "deserialize_map")] map: MapId },
+    #[serde(rename = "restart_round")]
+    RestartRound { #[serde(rename = "roundId")] round_id: u64 },
+    #[serde(rename = "skip_round")]
+    SkipRound { #[serde(rename = "roundId")] round_id: u64 },
     #[serde(rename = "in")]
     Input {
         s: u32,
@@ -66,6 +70,8 @@ pub enum ClientMsg {
         it: f64,
         #[serde(default, deserialize_with = "deserialize_optional_map")]
         map: Option<MapId>,
+        #[serde(default, rename = "roundId")]
+        round_id: Option<u64>,
     },
     #[serde(rename = "sel")]
     Select { slot: u8 },
@@ -169,6 +175,37 @@ struct Cmd {
     pitch: f32,
     dt: f32,
     it: f64,
+}
+
+/// Starting equipment and economy, before purchases or rewards in this round.
+/// Restarts restore these values instead of creating money from aborted rounds.
+#[derive(Clone, Copy)]
+struct RoundPlayer {
+    id: u32,
+    money: u32,
+    kills: u32,
+    deaths: u32,
+    prim: Option<Gun>,
+    sec: Option<Gun>,
+    nades: [u8; 3],
+    kit: bool,
+    armor: i32,
+    helmet: bool,
+}
+
+impl RoundPlayer {
+    fn capture(p: &Player) -> Self {
+        Self { id: p.id, money: p.money, kills: p.kills, deaths: p.deaths,
+            prim: p.prim, sec: p.sec, nades: p.nades, kit: p.kit,
+            armor: p.armor, helmet: p.helmet }
+    }
+
+    fn restore(self, p: &mut Player) {
+        p.money = self.money; p.kills = self.kills; p.deaths = self.deaths;
+        p.prim = self.prim; p.sec = self.sec; p.nades = self.nades;
+        p.kit = self.kit; p.armor = self.armor; p.helmet = self.helmet;
+        p.alive = true;
+    }
 }
 
 pub struct Player {
@@ -346,6 +383,9 @@ pub struct Game {
     pub score: [u32; 2],
     loss_streak: [u32; 2],
     round: u32,
+    round_id: u64,
+    round_players: Vec<RoundPlayer>,
+    skipping: bool,
     pub planted: Option<Planted>,
     pub items: Vec<Item>,
     nades: Vec<Nade>,
@@ -428,6 +468,9 @@ impl Game {
             score: [0; 2],
             loss_streak: [0; 2],
             round: 0,
+            round_id: 0,
+            round_players: Vec::new(),
+            skipping: false,
             planted: None,
             items: Vec::new(),
             nades: Vec::new(),
@@ -516,6 +559,79 @@ impl Game {
         self.broadcast_settings();
     }
 
+    fn can_restart(&self, conn: u32) -> bool {
+        !self.skipping && matches!(self.phase, Phase::Freeze | Phase::Live)
+            && self.host().is_some_and(|p| p.conn == Some(conn))
+    }
+
+    fn can_skip(&self, conn: u32) -> bool {
+        !self.skipping && self.phase == Phase::Live
+            && self.players.iter().any(|p| p.conn == Some(conn) && !p.alive)
+            && !self.players.iter().any(|p| p.conn.is_some() && p.alive)
+            && self.players.iter().any(|p| p.bot.is_some() && p.alive)
+    }
+
+    fn round_error(&self, conn: u32, message: &str) {
+        self.send(conn, json!({"t": "round_error", "m": message}).to_string());
+    }
+
+    fn restart_round(&mut self, conn: u32, round_id: u64) {
+        if round_id != self.round_id {
+            self.round_error(conn, "The round has changed. Try again.");
+            return;
+        }
+        if !self.can_restart(conn) {
+            self.round_error(conn, "Only the host can restart an active round, while no skip is running.");
+            return;
+        }
+        self.events.clear();
+        self.private.clear();
+        self.swap_pending = false;
+        for p in &mut self.players {
+            if let Some(checkpoint) = self.round_players.iter().find(|r| r.id == p.id) {
+                checkpoint.restore(p);
+            } else {
+                // A player who joined after the round began starts with their
+                // normal pistol and money, never the previous player's gear.
+                p.money = START_MONEY;
+                p.kills = 0;
+                p.deaths = 0;
+                p.alive = false;
+            }
+        }
+        self.begin_round(false);
+        self.broadcast_inner(true);
+    }
+
+    fn skip_round(&mut self, conn: u32, round_id: u64) {
+        if round_id != self.round_id {
+            self.round_error(conn, "The round has changed. Try again.");
+            return;
+        }
+        if !self.can_skip(conn) {
+            self.round_error(conn, "You can skip only when all human players are dead and bots are still playing.");
+            return;
+        }
+        self.skipping = true;
+        self.events.clear();
+        self.private.clear();
+        self.clear_round_inputs();
+        // Acknowledge before simulating; the menu can show progress even when
+        // the bot round needs several bounded batches to finish.
+        self.broadcast_inner(true);
+    }
+
+    fn clear_round_inputs(&mut self) {
+        for p in &mut self.players {
+            p.cmds.clear();
+            p.budget = 0.0;
+            p.buttons = 0;
+            p.prev_buttons = 0;
+            p.interp_time = self.time;
+            p.hist.clear();
+        }
+    }
+
     fn change_map(&mut self, map: MapId) {
         self.map = map_by_id(map);
         self.nav = Nav::build(self.map);
@@ -569,8 +685,11 @@ impl Game {
             (ClientMsg::Join { name, team, difficulty, map }, None) => self.join(conn, name, team, difficulty, map),
             (ClientMsg::SetDifficulty { difficulty }, _) => self.set_difficulty(conn, difficulty),
             (ClientMsg::SetMap { map }, _) => self.set_map(conn, map),
-            (ClientMsg::Input { s, b, y, p, d, it, map }, Some(i)) => {
-                if map.is_some_and(|id| id != self.map.id) { return; }
+            (ClientMsg::RestartRound { round_id }, _) => self.restart_round(conn, round_id),
+            (ClientMsg::SkipRound { round_id }, _) => self.skip_round(conn, round_id),
+            (ClientMsg::Input { s, b, y, p, d, it, map, round_id }, Some(i)) => {
+                if map.is_some_and(|id| id != self.map.id)
+                    || round_id.is_some_and(|id| id != self.round_id) { return; }
                 let q = &mut self.players[i].cmds;
                 if q.len() < 64 {
                     q.push_back(Cmd { seq: s, buttons: b, yaw: y, pitch: p, dt: d, it });
@@ -677,6 +796,7 @@ impl Game {
     // --------------------------------------------------------------- rounds
 
     fn reset_match(&mut self) {
+        self.swap_pending = false;
         self.score = [0; 2];
         self.loss_streak = [0; 2];
         self.round = 0;
@@ -735,8 +855,15 @@ impl Game {
     }
 
     fn start_round(&mut self) {
+        self.begin_round(true);
+    }
+
+    fn begin_round(&mut self, advance: bool) {
         self.fill_bots();
-        self.round += 1;
+        if advance { self.round += 1; }
+        self.round_id = self.round_id.wrapping_add(1);
+        self.skipping = false;
+        self.clear_round_inputs();
         self.phase = Phase::Freeze;
         self.phase_t = FREEZE_TIME;
         self.live_elapsed = 0.0;
@@ -769,6 +896,7 @@ impl Game {
             let c = atk[self.rng.below(atk.len())];
             self.players[c].has_bomb = true;
         }
+        self.round_players = self.players.iter().map(RoundPlayer::capture).collect();
         self.events.push(json!({"t": "round", "n": self.round}).to_string());
         self.roster_dirty = true;
     }
@@ -1467,6 +1595,39 @@ impl Game {
         if self.conns.is_empty() {
             return;
         }
+        if self.skipping {
+            self.advance_skipped_round();
+        } else {
+            self.simulate_tick();
+            self.broadcast();
+        }
+    }
+
+    fn advance_skipped_round(&mut self) {
+        // Keep the socket loop responsive: at most two simulated seconds or
+        // four milliseconds of work in each real server tick. No intermediate
+        // shots, hit markers or snapshots are sent during this acceleration.
+        let started = std::time::Instant::now();
+        for _ in 0..120 {
+            self.simulate_tick();
+            self.private.clear();
+            if self.phase != Phase::Live {
+                self.events.retain(|e| e.contains("\"t\":\"end\""));
+                // Use the ordinary transition, including halftime and match
+                // victory, exactly once. begin_round stops acceleration.
+                self.phase_t = 0.0;
+                self.update_phase(0.0);
+                self.broadcast_inner(true);
+                break;
+            }
+            self.events.clear();
+            if started.elapsed() >= std::time::Duration::from_millis(4) {
+                break;
+            }
+        }
+    }
+
+    fn simulate_tick(&mut self) {
         let dt = TICK;
         self.time += dt as f64;
         self.tick_n += 1;
@@ -1538,7 +1699,6 @@ impl Game {
         }
 
         self.update_phase(dt);
-        self.broadcast();
     }
 
     fn update_phase(&mut self, dt: f32) {
@@ -1651,6 +1811,10 @@ impl Game {
     }
 
     fn broadcast(&mut self) {
+        self.broadcast_inner(false);
+    }
+
+    fn broadcast_inner(&mut self, force_snapshot: bool) {
         // Events go out every tick so shots and hits feel immediate.
         if !self.events.is_empty() || !self.private.is_empty() {
             let global = self.events.join(",");
@@ -1682,7 +1846,7 @@ impl Game {
                 self.send(*conn, r.clone());
             }
         }
-        if self.tick_n % 2 != 0 {
+        if !force_snapshot && self.tick_n % 2 != 0 {
             return;
         }
 
@@ -1698,8 +1862,9 @@ impl Game {
             Phase::Live => (BUY_TIME - self.live_elapsed).max(0.0),
             _ => 0.0,
         };
-        let _ = write!(c, "\"map\":\"{}\",\"buySeconds\":{:.1},\"tm\":{:.3},\"ph\":{},\"pt\":{:.1},\"sc\":[{},{}],\"rd\":{},",
-            self.map.id.id(), buy_seconds, self.time, ph, self.phase_t.max(0.0), self.score[0], self.score[1], self.round);
+        let _ = write!(c, "\"map\":\"{}\",\"buySeconds\":{:.1},\"tm\":{:.3},\"ph\":{},\"pt\":{:.1},\"sc\":[{},{}],\"rd\":{},\"roundId\":{},\"skipping\":{},",
+            self.map.id.id(), buy_seconds, self.time, ph, self.phase_t.max(0.0), self.score[0], self.score[1], self.round,
+            self.round_id, self.skipping);
         match &self.planted {
             Some(b) => {
                 let _ = write!(c, "\"bomb\":[{:.2},{:.2},{:.2},{:.1},{}],", b.pos[0], b.pos[1], b.pos[2], b.timer, b.site);
@@ -1739,6 +1904,7 @@ impl Game {
             let mut s = String::with_capacity(c.len() + 400);
             s.push_str("{\"t\":\"s\",");
             s.push_str(&c);
+            let _ = write!(s, ",\"canRestart\":{},\"canSkip\":{}", self.can_restart(*conn), self.can_skip(*conn));
             match me {
                 None => s.push_str(",\"me\":null}"),
                 Some(p) => {
@@ -2057,11 +2223,11 @@ mod tests {
         }
         let i = g.idx(host_id).unwrap();
         g.handle(Incoming::Msg(50, ClientMsg::Input {
-            s: 81, b: B_FIRE, y: 0.0, p: 0.0, d: TICK, it: 0.0, map: Some(MapId::Sirocco),
+            s: 81, b: B_FIRE, y: 0.0, p: 0.0, d: TICK, it: 0.0, map: Some(MapId::Sirocco), round_id: None,
         }));
         assert!(g.players[i].cmds.is_empty(), "buffered movement from the old map must be ignored");
         g.handle(Incoming::Msg(50, ClientMsg::Input {
-            s: 82, b: 0, y: 0.0, p: 0.0, d: TICK, it: 0.0, map: Some(MapId::Meridian),
+            s: 82, b: 0, y: 0.0, p: 0.0, d: TICK, it: 0.0, map: Some(MapId::Meridian), round_id: None,
         }));
         assert_eq!(g.players[i].cmds.len(), 1);
     }
@@ -2850,6 +3016,199 @@ mod tests {
         assert_eq!(snapshot["me"]["am"], 30);
         assert_eq!(snapshot["me"]["amL"], 15);
         assert_eq!(snapshot["me"]["amR"], 15);
+    }
+
+    #[test]
+    fn round_controls_require_tokens_but_legacy_inputs_still_parse() {
+        for action in ["restart_round", "skip_round"] {
+            assert!(serde_json::from_str::<ClientMsg>(&json!({"t": action, "roundId": 5}).to_string()).is_ok());
+            assert!(serde_json::from_str::<ClientMsg>(&json!({"t": action}).to_string()).is_err());
+        }
+        let input = r#"{"t":"in","s":1,"b":0,"y":0,"p":0,"d":0.016}"#;
+        assert!(matches!(serde_json::from_str::<ClientMsg>(input).unwrap(), ClientMsg::Input { round_id: None, .. }));
+        let input = r#"{"t":"in","s":1,"b":0,"y":0,"p":0,"d":0.016,"roundId":5}"#;
+        assert!(matches!(serde_json::from_str::<ClientMsg>(input).unwrap(), ClientMsg::Input { round_id: Some(5), .. }));
+    }
+
+    #[test]
+    fn restarting_rolls_back_economy_equipment_stats_and_stale_combat_without_advancing_score() {
+        let mut g = Game::new();
+        let mut host = connect_player(&mut g, 50);
+        join_player(&mut g, 50, "Host", None);
+        let hi = g.idx(g.conn_player[&50]).unwrap();
+        let id = g.players[hi].id;
+        {
+            let p = &mut g.players[hi];
+            p.money = 4500; p.kills = 7; p.deaths = 3;
+            p.prim = Some(Gun { optic: 2, ..Gun::new(by_id("kar98k").unwrap()) });
+            p.armor = 73; p.helmet = true; p.kit = true; p.nades = [1, 1, 1];
+        }
+        g.score = [3, 4]; g.loss_streak = [2, 0];
+        g.start_round();
+        let mut guest = connect_player(&mut g, 60);
+        join_player(&mut g, 60, "Late guest", None);
+        let hi = g.idx(id).unwrap();
+        let gi = g.idx(g.conn_player[&60]).unwrap();
+        assert!(g.buy(gi, "red_dot"));
+        g.phase = Phase::Live;
+        let round = g.round;
+        let token = g.round_id;
+        let team = g.players[hi].team;
+        for p in &mut g.players {
+            p.money = 16000; p.kills += 10; p.deaths += 1;
+            p.alive = false; p.prim = None; p.armor = 0; p.helmet = false;
+            p.kit = false; p.nades = [0; 3]; p.reload_t = 2.0;
+            p.plant_t = 1.0; p.defuse_t = 1.0; p.flash_t = 1.0;
+            p.buttons = B_FIRE; p.prev_buttons = B_FIRE;
+            p.cmds.push_back(Cmd { seq: 80, buttons: B_FIRE, yaw: 1.0, pitch: 0.0, dt: TICK, it: 0.0 });
+            p.budget = 0.2; p.ack = 77; p.hist.push_back((0.0, [0.0; 3], false));
+        }
+        g.planted = Some(Planted { pos: [0.0; 3], timer: 10.0, site: 0 });
+        g.nades.push(Nade { id: 1000, kind: FRAG, pos: [0.0; 3], vel: [0.0; 3], fuse: 1.0, owner: id, team });
+        g.smokes.push(Smoke { pos: [0.0; 3], t: 10.0 });
+        g.drop_item(Gun::new(PISTOL_ATK), [0.0; 3], 0);
+        g.events.push(json!({"t": "stale_shot"}).to_string());
+        g.private.push((id, json!({"t": "stale_hit"}).to_string()));
+        messages(&mut host); messages(&mut guest);
+        g.handle(Incoming::Msg(50, ClientMsg::RestartRound { round_id: token }));
+        assert_eq!(g.round, round); assert_eq!(g.round_id, token + 1);
+        assert_eq!(g.score, [3, 4]); assert_eq!(g.loss_streak, [2, 0]);
+        assert_eq!(g.players[hi].team, team); assert!(g.phase == Phase::Freeze);
+        let p = &g.players[hi];
+        assert_eq!((p.money, p.kills, p.deaths), (4500, 7, 3));
+        assert_eq!((p.armor, p.helmet, p.kit, p.nades), (73, true, true, [1, 1, 1]));
+        assert_eq!((p.prim.unwrap().w, p.prim.unwrap().optic, p.prim.unwrap().ammo), (by_id("kar98k").unwrap(), 2, 5));
+        assert_eq!((g.players[gi].money, g.players[gi].kills, g.players[gi].deaths), (800, 0, 0));
+        assert_eq!(g.players[gi].sec.unwrap().optic, 0);
+        assert!(g.items.is_empty() && g.nades.is_empty() && g.smokes.is_empty() && g.planted.is_none());
+        for p in &g.players {
+            assert!(p.alive && p.hp == 100 && p.cmds.is_empty() && p.hist.is_empty());
+            assert_eq!((p.budget, p.buttons, p.prev_buttons, p.reload_t, p.plant_t, p.defuse_t, p.flash_t), (0.0, 0, 0, 0.0, 0.0, 0.0, 0.0));
+            assert_eq!(p.ack, 77);
+        }
+        let sent = messages(&mut host);
+        assert!(!sent.iter().any(|m| m.to_string().contains("stale_")));
+        let state = sent.iter().find(|m| m["t"] == "s").unwrap();
+        assert_eq!(state["roundId"], token + 1); assert_eq!(state["canRestart"], true);
+        assert_eq!(state["canSkip"], false); assert_eq!(state["skipping"], false);
+        g.handle(Incoming::Msg(50, ClientMsg::RestartRound { round_id: token }));
+        assert_eq!(g.round_id, token + 1, "replaying a request cannot restart twice");
+        assert!(messages(&mut host).iter().any(|m| m["t"] == "round_error"));
+        g.handle(Incoming::Msg(50, ClientMsg::Input { s: 81, b: B_FIRE, y: 1.0, p: 0.0, d: TICK, it: 0.0, map: None, round_id: Some(token) }));
+        assert!(g.players[hi].cmds.is_empty()); assert_eq!(g.players[hi].ack, 77);
+        g.players[hi].money += 1000; g.players[hi].kills += 1;
+        g.restart_round(50, g.round_id);
+        assert_eq!((g.players[hi].money, g.players[hi].kills), (4500, 7), "repeated restarts cannot farm aborted rewards");
+    }
+
+    #[test]
+    fn round_control_permissions_follow_host_living_humans_and_busy_state() {
+        let mut g = Game::new();
+        let mut host = connect_player(&mut g, 50);
+        join_player(&mut g, 50, "Host", None);
+        let mut guest = connect_player(&mut g, 60);
+        join_player(&mut g, 60, "Guest", None);
+        let mut observer = connect_player(&mut g, 90);
+        let token = g.round_id;
+        assert!(g.can_restart(50)); assert!(!g.can_restart(60) && !g.can_restart(90));
+        for conn in [60, 90] { g.restart_round(conn, token); }
+        assert_eq!(g.round_id, token);
+        assert!(messages(&mut guest).iter().any(|m| m["t"] == "round_error"));
+        assert!(messages(&mut observer).iter().any(|m| m["t"] == "round_error"));
+        for p in &mut g.players { if p.conn.is_some() { p.alive = false; } }
+        assert!(!g.can_skip(50), "freeze is not a bot remainder");
+        g.phase = Phase::Live;
+        let hi = g.idx(g.conn_player[&50]).unwrap();
+        g.players[hi].alive = true;
+        assert!(!g.can_skip(50) && !g.can_skip(60));
+        g.skip_round(60, token); assert!(!g.skipping);
+        g.players[hi].alive = false;
+        assert!(g.can_skip(60), "a dead guest need not wait for the host");
+        assert!(!g.can_skip(90), "unjoined visitors have no round control");
+        messages(&mut guest);
+        g.skip_round(60, token);
+        assert!(g.skipping && !g.can_restart(50) && !g.can_skip(60));
+        let ack = messages(&mut guest);
+        assert!(ack.iter().any(|m| m["t"] == "s" && m["skipping"] == true && m["roundId"] == token));
+        g.restart_round(50, token); assert_eq!(g.round_id, token);
+        assert!(messages(&mut host).iter().any(|m| m["t"] == "round_error"));
+        g.handle(Incoming::Disconnect(50));
+        assert_eq!(g.host().unwrap().conn, Some(60));
+        g.skipping = false;
+        assert!(g.can_restart(60));
+        for p in &mut g.players { p.alive = false; }
+        assert!(!g.can_skip(60), "there must still be live bots to accelerate");
+    }
+
+    #[test]
+    fn skipping_resolves_real_objectives_and_preserves_halftime_and_match_end() {
+        for (score, planted, expected_score, expected_round, swaps) in [
+            ([0, 0], false, [0, 1], 2, false),
+            ([7, 7], false, [8, 7], 16, true),
+            ([15, 0], true, [0, 0], 1, true),
+        ] {
+            let mut g = Game::new();
+            let mut host = connect_player(&mut g, 50);
+            join_player(&mut g, 50, "Host", None);
+            let hi = g.idx(g.conn_player[&50]).unwrap();
+            let team = g.players[hi].team;
+            g.players[hi].alive = false; g.players[hi].hp = 0;
+            g.score = score; g.round = score[0] + score[1] + 1;
+            g.phase = Phase::Live; g.phase_t = TICK * 0.5;
+            if planted { g.planted = Some(Planted { pos: [0.0; 3], timer: TICK * 0.5, site: 0 }); }
+            let token = g.round_id;
+            messages(&mut host);
+            g.skip_round(50, token);
+            messages(&mut host);
+            g.tick();
+            assert!(!g.skipping && g.phase == Phase::Freeze);
+            assert_eq!(g.round_id, token + 1); assert_eq!(g.round, expected_round);
+            assert_eq!(g.score, expected_score); assert!(!g.swap_pending);
+            assert_eq!(g.players[hi].team, if swaps { 3 - team } else { team });
+            assert_eq!(g.players[hi].money, if swaps { 800 } else { 2200 });
+            assert!(g.players.iter().all(|p| p.alive && p.cmds.is_empty() && p.hist.is_empty()));
+            let sent = messages(&mut host);
+            let events: Vec<_> = sent.iter().filter(|m| m["t"] == "e").flat_map(|m| m["ev"].as_array().unwrap()).collect();
+            assert_eq!(events.len(), 2, "only the result and new round are broadcast, not accelerated shots");
+            assert_eq!(events[0]["t"], "end"); assert_eq!(events[0]["w"], if planted { ATK } else { DEF });
+            assert_eq!(events[0]["r"], if planted { "detonated" } else { "time" });
+            assert_eq!(events[1]["t"], "round");
+            assert!(sent.iter().any(|m| m["t"] == "s" && m["roundId"] == token + 1 && m["skipping"] == false));
+            g.skip_round(50, token); assert_eq!(g.round_id, token + 1);
+        }
+    }
+
+    #[test]
+    fn skipping_runs_in_bounded_batches_without_intermediate_network_effects() {
+        let mut g = Game::new();
+        g.rng = Rng(17);
+        let mut host = connect_player(&mut g, 50);
+        join_player(&mut g, 50, "Host", Some(Difficulty::Easy));
+        for p in &mut g.players { if p.conn.is_some() { p.alive = false; p.hp = 0; } }
+        g.phase = Phase::Live; g.phase_t = ROUND_TIME;
+        let token = g.round_id;
+        g.skip_round(50, token);
+        messages(&mut host);
+        let started = std::time::Instant::now();
+        let mut slowest = std::time::Duration::ZERO;
+        let mut batches = 0;
+        while g.skipping {
+            let before = g.time;
+            let batch = std::time::Instant::now();
+            g.tick();
+            slowest = slowest.max(batch.elapsed());
+            batches += 1;
+            assert!(g.time - before <= 2.001, "one server callback can simulate at most 120 ticks");
+            if g.skipping { assert!(messages(&mut host).is_empty()); }
+            assert!(batches < 2000, "normal round/bomb timers bound accelerated work");
+        }
+        eprintln!("bot skip benchmark: {batches} bounded batches, {:.2?} total loop time, {:.2?} slowest batch", started.elapsed(), slowest);
+        assert!(batches > 1); assert_eq!(g.round_id, token + 1);
+        assert_eq!(g.round, 2); assert_eq!(g.score.iter().sum::<u32>(), 1);
+        assert!(g.phase == Phase::Freeze);
+        let sent = messages(&mut host);
+        assert_eq!(sent.iter().filter(|m| m["t"] == "s").count(), 1);
+        assert!(!sent.iter().any(|m| m.to_string().contains("\"t\":\"shot\"")));
     }
 
     fn play_round(g: &mut Game, winner: u8) {

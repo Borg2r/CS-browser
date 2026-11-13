@@ -14,7 +14,10 @@ const hud = new Hud(item => send({ t: 'buy', item }), () => {
 });
 const settings = new BotSettings(difficulty => send({ t: 'set_difficulty', difficulty }), () => {
   if (joined) captureMouse();
-}, map => send({ t: 'set_map', map }));
+}, map => send({ t: 'set_map', map }), (action, roundId) => {
+  keys.clear(); mouseB = 0;
+  send({ t: action === 'restart' ? 'restart_round' : 'skip_round', roundId });
+});
 
 const B = { FWD: 1, BACK: 2, LEFT: 4, RIGHT: 8, JUMP: 16, CROUCH: 32, WALK: 64, FIRE: 128, RELOAD: 256, USE: 512, FIRE2: 1024 };
 const FREEZE_MASK = ~(B.FWD | B.BACK | B.LEFT | B.RIGHT | B.JUMP);
@@ -132,6 +135,7 @@ function connect() {
       case 'r': roster = new Map(m.pl.map(p => [p.id, p])); break;
       case 'settings': settings.update(m); updateReady(); break;
       case 'settings_error': settings.error(m.m); break;
+      case 'round_error': settings.roundError(m.m); break;
       case 'hello': installMap(m); break;
       case 'joined':
         myId = m.id; joined = true; snaps = []; pending = []; latest = me = pred = null; wasAlive = false; resetView = true;
@@ -156,11 +160,20 @@ for (const b of document.querySelectorAll('.teams button')) {
 }
 
 function onSnap(m) {
+  const newRound = latest && m.roundId !== latest.roundId;
+  if (newRound) {
+    resetView = true; pending = []; snaps = []; err = [0, 0, 0];
+    keys.clear(); mouseB = 0;
+    aimBlend = punch = punchYaw = shotsC = 0;
+    hud.toggleBuy(false); hud.resetEffects();
+    if (hud.wheelOpen) hud.closeWheel();
+  }
   const now = performance.now() / 1000;
   timeOffset = Math.max(timeOffset - 0.0005, m.tm - now);
   m.players = new Map(m.pl.map(a => [a[0], { id: a[0], team: a[1], alive: !!a[2], x: a[3], y: a[4], z: a[5], yaw: a[6], pitch: a[7], hp: a[8], w: a[9], flags: a[10], optic: a[11] || 0 }]));
   snaps.push(m); if (snaps.length > 40) snaps.shift();
   latest = m; me = m.me;
+  settings.updateRound(m);
   if (!me || !wasm) return;
   if (recoilWeapon !== `${me.w}/${me.optic || 0}`) {
     recoilWeapon = `${me.w}/${me.optic || 0}`; shotsC = 0; sinceShot = 9;
@@ -274,7 +287,15 @@ document.addEventListener('mouseup', e => {
   if (e.button === 2) mouseB &= ~B.FIRE2;
 });
 document.addEventListener('contextmenu', e => e.preventDefault());
-document.addEventListener('pointerlockchange', () => { if (!locked()) { keys.clear(); mouseB = 0; } });
+let hadPointerLock = false;
+document.addEventListener('pointerlockchange', () => {
+  const hasLock = locked(), released = hadPointerLock && !hasLock;
+  hadPointerLock = hasLock;
+  if (!hasLock) { keys.clear(); mouseB = 0; }
+  // Browsers consume Esc while the pointer is locked; the release is the
+  // reliable signal. Buying and opening this dialog release it intentionally.
+  if (released && joined && !settings.open && !hud.buyOpen && !chatOpen) openSettings();
+});
 document.addEventListener('mousemove', e => {
   if (!locked() || settings.open || hud.buyOpen) return;
   const mx = Math.max(-400, Math.min(400, e.movementX)), my = Math.max(-400, Math.min(400, e.movementY));
@@ -293,7 +314,7 @@ function selectSlot(s) { if (me && hud.owned(me)[s]) send({ t: 'sel', slot: s })
 document.addEventListener('keydown', e => {
   if (!joined) return;
   if (settings.open) {
-    if (!e.repeat && (e.code === 'Escape' || e.code === 'F2')) { e.preventDefault(); settings.close(e.code !== 'Escape'); }
+    if (!e.repeat && (e.code === 'Escape' || e.code === 'F2')) { e.preventDefault(); settings.close(); }
     return;
   }
   if (chatOpen) {
@@ -323,7 +344,7 @@ document.addEventListener('keydown', e => {
         document.exitPointerLock?.(); sfx.ui(true);
       } else sfx.ui(false);
       break;
-    case 'Escape': hud.toggleBuy(false); break;
+    case 'Escape': e.preventDefault(); openSettings(); break;
     case 'KeyQ': if (me && wasAlive && !hud.wheelOpen) hud.openWheel(me); break;
     case 'KeyG': send({ t: 'drop' }); break;
     case 'KeyT': case 'Enter': chatOpen = true; keys.clear(); $('chatbox').classList.remove('hidden'); $('chatbox').focus(); e.preventDefault(); break;
@@ -407,7 +428,7 @@ function frame(tms) {
     for (let left = dt; left > 1e-4; left -= 0.05) {
       const d = round4(Math.min(0.05, left));
       seq++;
-      send({ t: 'in', map: hello.map.id, s: seq, b, y, p, d, it: +rt.toFixed(3) });
+      send({ t: 'in', map: hello.map.id, roundId: latest.roundId, s: seq, b, y, p, d, it: +rt.toFixed(3) });
       if (alive) {
         simStep(pred, mb, y, d, sp);
         pending.push({ s: seq, mb, y, d, sp });
@@ -490,7 +511,7 @@ function frame(tms) {
   } else if (hud.buyOpen) { hud.toggleBuy(false); hud.renderBuy(me || { mo: 0 }, 1); }
   if (!alive && me && latest.ph !== 3) specName = specName || 'You will spawn next round';
   hud.update(dt, {
-    me, snap: latest, alive, weapons, scoped, aiming, viewWeapon, opticDot: aiming && viewWeapon.optic === 1 && aimBlend > .85, sniper: alive && w.cls === 5, hint, progress, spec: specName, locked: locked(),
+    me, snap: latest, alive, weapons, scoped, aiming, viewWeapon, opticDot: aiming && viewWeapon.optic === 1 && aimBlend > .85, sniper: alive && w.cls === 5, hint, progress, spec: specName, locked: locked(), menuOpen: settings.open,
     gap: 4 + speed * 1.1 + shotsC * 1.6 + (alive && pred[6] < 0.5 ? 8 : 0),
   });
   hud.scoreboard(keys.has('Tab') || latest.ph === 3, roster, latest, myId);
