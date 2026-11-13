@@ -808,6 +808,7 @@ impl Game {
         p.scoped = 0;
         p.plant_t = 0.0;
         p.shots = 0.0;
+        p.hand_cooldown = [0.0; 2];
         p.hand_shots = [0.0; 2];
         p.cooldown = p.cooldown.max(0.35);
     }
@@ -866,6 +867,7 @@ impl Game {
                         p.reload_t = 0.0;
                         p.scoped = 0;
                         p.shots = 0.0;
+                        p.hand_cooldown = [0.0; 2];
                         p.hand_shots = [0.0; 2];
                         p.cooldown = 0.35;
                     }
@@ -915,6 +917,7 @@ impl Game {
         p.plant_t = 0.0;
         p.shots = 0.0;
         p.since_shot = 9.0;
+        p.hand_cooldown = [0.0; 2];
         p.hand_shots = [0.0; 2];
         p.hand_since_shot = [9.0; 2];
         p.cooldown = p.cooldown.max(0.35);
@@ -953,6 +956,7 @@ impl Game {
                                 p.scoped = 0;
                                 p.shots = 0.0;
                                 p.since_shot = 9.0;
+                                p.hand_cooldown = [0.0; 2];
                                 p.hand_shots = [0.0; 2];
                                 p.hand_since_shot = [9.0; 2];
                                 p.cooldown = p.cooldown.max(0.35);
@@ -1581,7 +1585,7 @@ impl Game {
                 json!({"id": w.id, "name": w.name, "cls": w.class, "price": w.price, "mag": w.mag,
                        "interval": w.interval, "auto": w.auto, "speed": w.speed, "zoom": w.zoom,
                        "team": w.team, "recoil": w.recoil, "slot": slot_of(w.class), "reload": w.reload,
-                       "dmg": w.dmg, "dual": w.dual, "ads": w.ads})
+                       "dmg": w.dmg, "pellets": w.pellets, "dual": w.dual, "ads": w.ads})
             })
             .collect();
         let metadata = |id: MapId| json!({
@@ -2049,9 +2053,10 @@ mod tests {
         p.bot = None;
         p.alive = true;
         p.hp = 100;
-        p.prim = None;
-        p.sec = Some(Gun::new(by_id(weapon).unwrap()));
-        p.slot = 1;
+        let w = by_id(weapon).unwrap();
+        p.slot = slot_of(WEAPONS[w].class);
+        p.prim = (p.slot == 0).then(|| Gun::new(w));
+        p.sec = (p.slot == 1).then(|| Gun::new(w));
         p.cooldown = 0.0;
         p.buttons = 0;
         p.prev_buttons = 0;
@@ -2070,6 +2075,186 @@ mod tests {
             let event: serde_json::Value = serde_json::from_str(event).unwrap();
             (event["t"] == "shot").then(|| event["hand"].as_u64().unwrap())
         }).collect()
+    }
+
+    #[test]
+    fn dual_primaries_buy_into_primary_slot_for_both_teams() {
+        for team in [ATK, DEF] {
+            for id in ["twin_mp7", "twin_lever"] {
+                let mut g = weapon_game("kestrel");
+                let w = by_id(id).unwrap();
+                let p = &mut g.players[0];
+                p.team = team;
+                p.st.pos = [g.map.spawns[(team - 1) as usize][0][0], 0.001,
+                            g.map.spawns[(team - 1) as usize][0][1]];
+                p.money = WEAPONS[w].price - 1;
+                p.prim = Some(Gun::new(by_id("sentinel").unwrap()));
+                p.prim.as_mut().unwrap().ammo = 9;
+                let sidearm = p.sec.unwrap();
+                assert!(!g.buy(0, id), "the price still applies to dual primaries");
+                assert_eq!(g.players[0].money, WEAPONS[w].price - 1);
+                assert!(g.items.is_empty());
+                g.players[0].money = 6000;
+                assert!(g.buy(0, id), "{id} must be available to team {team}");
+                let p = &g.players[0];
+                assert_eq!(p.slot, 0);
+                assert_eq!(p.prim.unwrap().w, w);
+                assert_eq!(p.money, 6000 - WEAPONS[w].price);
+                assert_eq!((p.sec.unwrap().w, p.sec.unwrap().ammo), (sidearm.w, sidearm.ammo));
+                assert_eq!(p.prim.unwrap().ammo_hand(0), WEAPONS[w].mag / 2);
+                assert_eq!(p.prim.unwrap().ammo_hand(1), WEAPONS[w].mag / 2);
+                assert_eq!(g.items.len(), 1);
+                assert_eq!((g.items[0].w, g.items[0].ammo), (by_id("sentinel").unwrap(), 9));
+                assert!(!g.buy(0, id), "buying the same owned pair must not duplicate it");
+                assert_eq!(g.players[0].money, 6000 - WEAPONS[w].price);
+            }
+        }
+    }
+
+    #[test]
+    fn dual_mp7_holds_fire_independently_and_stops_each_released_hand() {
+        let mut g = weapon_game("twin_mp7");
+        for _ in 0..30 { input(&mut g, B_FIRE, TICK); }
+        let left = g.players[0].gun().unwrap().ammo_hand(0);
+        assert!(left < 38 && left >= 30, "holding left should produce an automatic burst");
+        assert_eq!(g.players[0].gun().unwrap().ammo_hand(1), 40);
+        assert!(shot_hands(&g).iter().all(|&hand| hand == 0));
+        let events = shot_hands(&g).len();
+        for _ in 0..30 { input(&mut g, B_FIRE2, TICK); }
+        assert_eq!(g.players[0].gun().unwrap().ammo_hand(0), left, "released left stops firing");
+        assert!(g.players[0].gun().unwrap().ammo_hand(1) < 38);
+        assert!(shot_hands(&g)[events..].iter().all(|&hand| hand == 1));
+        let before = g.players[0].gun().unwrap().ammo;
+        for _ in 0..30 { input(&mut g, B_FIRE | B_FIRE2, TICK); }
+        assert!(g.players[0].gun().unwrap().ammo < before - 8, "both held triggers fire automatically");
+        assert_eq!(g.players[0].scoped, 0, "RMB fires the right MP7 instead of aiming");
+        let stopped = g.players[0].gun().unwrap().ammo;
+        for _ in 0..30 { input(&mut g, 0, TICK); }
+        assert_eq!(g.players[0].gun().unwrap().ammo, stopped);
+    }
+
+    #[test]
+    fn lever_pair_cycles_each_hand_and_emits_one_pellet_cloud_per_shell() {
+        let mut g = weapon_game("twin_lever");
+        input(&mut g, B_FIRE, TICK);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(shot_hands(&g), [0, 1]);
+        assert_eq!((g.players[0].gun().unwrap().ammo_hand(0), g.players[0].gun().unwrap().ammo_hand(1)), (4, 4));
+        input(&mut g, 0, TICK);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(shot_hands(&g), [0, 1], "repressing during the lever cycle must not bypass its delay");
+        for _ in 0..90 { input(&mut g, B_FIRE | B_FIRE2, TICK); }
+        assert_eq!(shot_hands(&g), [0, 1], "holding after cycling must not repeat a semi-automatic shot");
+        input(&mut g, 0, TICK);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(shot_hands(&g), [0, 1, 0, 1]);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 6);
+        assert_eq!(g.players[0].scoped, 0);
+        for event in &g.events {
+            let event: serde_json::Value = serde_json::from_str(event).unwrap();
+            if event["t"] == "shot" {
+                assert_eq!(event["h"].as_array().unwrap().len(), 7, "each shell is a shotgun spread");
+            }
+        }
+    }
+
+    #[test]
+    fn dual_primaries_reload_without_firing_or_creating_ammunition() {
+        for id in ["twin_mp7", "twin_lever"] {
+            let mut g = weapon_game(id);
+            input(&mut g, B_FIRE, TICK);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            input(&mut g, B_RELOAD, TICK);
+            assert!(g.players[0].reload_t > 0.0);
+            let before = *g.players[0].gun().unwrap();
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].gun().unwrap().ammo, before.ammo);
+            assert_eq!(g.players[0].scoped, 0);
+            input(&mut g, 0, WEAPONS[before.w].reload);
+            let gun = g.players[0].gun().unwrap();
+            assert_eq!(gun.ammo_hand(0), WEAPONS[gun.w].mag / 2);
+            assert_eq!(gun.ammo_hand(1), WEAPONS[gun.w].mag / 2);
+            assert_eq!(gun.ammo + gun.reserve, before.ammo + before.reserve);
+        }
+    }
+
+    #[test]
+    fn empty_dual_primary_hands_and_limited_reserve_stay_independent() {
+        for id in ["twin_mp7", "twin_lever"] {
+            let w = by_id(id).unwrap();
+            let capacity = WEAPONS[w].mag / 2;
+            for empty in [0, 1] {
+                let mut g = weapon_game(id);
+                let gun = g.players[0].gun_mut().unwrap();
+                gun.ammo = capacity;
+                gun.left_ammo = if empty == 0 { 0 } else { capacity };
+                let button = if empty == 0 { B_FIRE } else { B_FIRE2 };
+                for _ in 0..60 { input(&mut g, button, TICK); }
+                assert_eq!(g.players[0].gun().unwrap().ammo, capacity);
+                assert_eq!(g.players[0].reload_t, 0.0, "empty hand must not block the loaded hand with auto-reload");
+                assert!(shot_hands(&g).is_empty());
+                input(&mut g, B_FIRE | B_FIRE2, TICK);
+                assert_eq!(g.players[0].gun().unwrap().ammo, capacity - 1);
+                assert_eq!(shot_hands(&g), [1 - empty]);
+            }
+            let mut limited = Gun::new(w);
+            limited.ammo = 2; limited.left_ammo = 0; limited.reserve = 3;
+            limited.reload();
+            assert_eq!(limited.ammo + limited.reserve, 5);
+            assert_eq!(limited.reserve, 0);
+            assert!(limited.ammo_hand(0) <= capacity && limited.ammo_hand(1) <= capacity);
+        }
+    }
+
+    #[test]
+    fn leaving_lever_guns_resets_hand_cycle_but_keeps_the_equip_delay() {
+        for transition in ["select", "buy", "drop"] {
+            let mut g = weapon_game("twin_lever");
+            g.players[0].sec = Some(Gun::new(by_id("twin_kestrel").unwrap()));
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert!(g.players[0].hand_cooldown[0] > 0.8);
+            match transition {
+                "select" => g.select_slot(0, 1),
+                "drop" => g.drop_active(0),
+                _ => { g.players[0].money = 6000; assert!(g.buy(0, "twin_mp7")); }
+            }
+            let before = g.players[0].gun().unwrap().ammo;
+            input(&mut g, 0, TICK);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].gun().unwrap().ammo, before, "{transition}: cannot fire during equip delay");
+            input(&mut g, 0, 0.35);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].gun().unwrap().ammo, before - 2,
+                       "{transition}: new pair must not inherit the old lever cycle");
+        }
+    }
+
+    #[test]
+    fn enemy_dual_primary_drops_keep_each_hand_ammo_when_picked_up() {
+        for id in ["twin_mp7", "twin_lever"] {
+            let mut g = weapon_game(id);
+            g.players[0].team = DEF;
+            input(&mut g, B_FIRE, TICK);
+            let before = *g.players[0].gun().unwrap();
+            let victim_pos = g.players[0].st.pos;
+            let mut collector = Player::new(999, "Collector".into(), ATK, None, None);
+            collector.alive = true;
+            collector.hp = 100;
+            collector.st.pos = victim_pos;
+            collector.sec = Some(Gun::new(PISTOL_ATK));
+            collector.slot = 1;
+            g.players.push(collector);
+            g.kill(0, Some(1), PISTOL_ATK, false);
+            assert_eq!(g.items.len(), 1);
+            assert!(!g.players[0].alive && g.players[0].prim.is_none());
+            g.pickups();
+            let after = g.players[1].prim.unwrap();
+            assert_eq!((after.w, after.ammo, after.left_ammo, after.reserve),
+                       (before.w, before.ammo, before.left_ammo, before.reserve));
+            assert_eq!(g.players[1].slot, 0);
+            assert_eq!(g.players[1].sec.unwrap().w, PISTOL_ATK);
+            assert!(g.items.is_empty());
+        }
     }
 
     #[test]
@@ -2248,7 +2433,15 @@ mod tests {
     fn weapon_metadata_and_snapshot_publish_dual_contract() {
         let mut g = weapon_game("twin_kestrel");
         let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
-        let twins = hello["weapons"].as_array().unwrap().iter().find(|w| w["id"] == "twin_kestrel").unwrap();
+        let definitions = hello["weapons"].as_array().unwrap();
+        assert_eq!(definitions.len(), 31);
+        for (id, class, capacity, pellets, automatic) in [("twin_mp7", C_SMG, 80, 1, true), ("twin_lever", C_SHOTGUN, 10, 7, false)] {
+            let def = definitions.iter().find(|w| w["id"] == id).unwrap();
+            assert_eq!(def["cls"], class); assert_eq!(def["slot"], 0); assert_eq!(def["team"], 0);
+            assert_eq!(def["dual"], true); assert_eq!(def["ads"], false); assert_eq!(def["zoom"], 0.0);
+            assert_eq!(def["mag"], capacity); assert_eq!(def["pellets"], pellets); assert_eq!(def["auto"], automatic);
+        }
+        let twins = definitions.iter().find(|w| w["id"] == "twin_kestrel").unwrap();
         assert_eq!(twins["dual"], true);
         assert_eq!(twins["ads"], false);
         assert_eq!(twins["mag"], 30);

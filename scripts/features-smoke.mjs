@@ -109,13 +109,20 @@ try {
   assert.ok(map.boxes.length > 20 && map.w >= 30 && map.h >= 30, 'complete playable map geometry');
   assert.ok(map.sites.every(site => site.length === 4 && site.every(Number.isFinite)), 'valid objective bounds');
   const dualIndex = weapons.findIndex(weapon => weapon.id === 'twin_kestrel');
-  for (const id of ['twin_kestrel', 'twin_mammoth']) {
+  for (const id of ['twin_kestrel', 'twin_mammoth', 'twin_mp7', 'twin_lever']) {
     const weapon = weapons.find(weapon => weapon.id === id);
     assert.ok(weapon?.dual && !weapon.ads && weapon.zoom === 0, `${id}: dual, never ADS`);
     assert.ok(weapon.mag > 0 && weapon.mag % 2 === 0, `${id}: paired magazines`);
   }
   assert.ok(weapons.some(weapon => weapon.ads && !weapon.dual && weapon.zoom >= 4), 'scoped firearms remain available');
-  console.log('PASS: Sirocco map and both akimbo weapon definitions');
+  for (const [id, cls, automatic, capacity] of [['twin_mp7', 3, true, 80], ['twin_lever', 2, false, 10]]) {
+    const weapon = weapons.find(w => w.id === id);
+    assert.equal(weapon.cls, cls); assert.equal(weapon.auto, automatic);
+    assert.equal(weapon.slot, 0, `${id}: primary slot`);
+    assert.equal(weapon.team, 0, `${id}: both teams`); assert.equal(weapon.mag, capacity);
+  }
+  assert.equal(weapons.find(w => w.id === 'twin_lever').pellets, 7);
+  console.log('PASS: Sirocco map, four akimbo definitions, automatic MP7 and pellet-firing lever primaries');
 
   send({ t: 'join', name: `Feature-${Date.now().toString(36)}`, team: 1 });
   await until(() => player.id && player.snapshot?.me, 'player joins');

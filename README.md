@@ -74,7 +74,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 - 30 rounds: sides swap at half-time after 15, first team to 16 wins.
 - Fixed spray patterns, bullet penetration through thin cover, fall damage,
   slow-down when hit, hold-to-aim iron sights and optics, knife slash / stab / backstab.
-- 24 firearms (pistols, two akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
+- 26 firearms (pistols, four akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
   knife, frag / flash / smoke grenades, armour, helmet and defuse kit.
 - Economy with kill rewards and round win / loss bonuses. The CS-inspired buy
   menu has six categories, weapon illustrations, prices and statistics, a budget
@@ -87,10 +87,14 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   with **F2**. It affects bots on both teams. Host control transfers to the next
   player when the host leaves, and the level is retained between rounds.
 - Weapon drops and pick-ups, spectating while dead, radar, scoreboard, chat.
-- **Twin Kestrels** and **Twin Mammoths** can be bought under Pistols. Each hand
-  has its own magazine and firing rhythm: left click fires the left pistol,
-  right click fires the right pistol, and pressing both fires both. Akimbo has
-  no aiming mode. The HUD shows left and right ammunition separately.
+- Four akimbo options: **Twin Kestrels** and **Twin Mammoths** under Pistols;
+  **Dual MP7** under SMGs ($2,600, 40 rounds per hand); and **Twin Lever-Action**
+  under Heavy ($2,400, 5 shells per hand). The new pairs occupy the primary slot,
+  leaving room for a sidearm. Hold either mouse button for automatic MP7 fire;
+  click to fire each lever-action shotgun, which cycles independently after a
+  shot. Left mouse controls the left gun, right mouse controls the right, and
+  both can fire together. Akimbo never aims down sights. The HUD shows each
+  hand's ammunition; reload fills both guns from their shared reserve.
 
 ## Controls
 
@@ -99,7 +103,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 | WASD / Space        | Move / jump                                   |
 | C or Ctrl / Shift   | Crouch / walk                                 |
 | Mouse 1 / Mouse 2   | Fire, plant / hold to aim, knife stab         |
-| Mouse 1 / Mouse 2 (akimbo) | Left pistol / right pistol; no aiming  |
+| Mouse 1 / Mouse 2 (akimbo) | Left gun / right gun; no aiming  |
 | R / E / G           | Reload / defuse / drop weapon                 |
 | F2                  | Map and bot difficulty (host controls both)   |
 | B                   | Buy menu (number keys or click)               |

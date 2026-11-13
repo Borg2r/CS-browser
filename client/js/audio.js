@@ -69,6 +69,11 @@ export class Sfx {
     this.burst(o, { dur: p[0], freq: p[1], vol: p[2], sweep: 300 });
     this.tone(o, { freq: p[3], to: 40, dur: p[4], vol: p[2] * 0.9, type: 'triangle' });
   }
+  leverCycle(pos) {
+    const o = this.out(pos, 0.24, 24); if (!o) return;
+    this.tone(o, { freq: 1250, to: 500, dur: 0.045, vol: 0.35, type: 'square', delay: 0.16 });
+    this.tone(o, { freq: 850, to: 350, dur: 0.035, vol: 0.4, type: 'square', delay: 0.68 });
+  }
   swing(pos, hit) {
     const o = this.out(pos, 0.5, 25); if (!o) return;
     this.burst(o, { dur: 0.12, freq: 900, type: 'bandpass', q: 2, vol: 0.6, sweep: 2500 });

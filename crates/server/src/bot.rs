@@ -171,6 +171,8 @@ fn shop(g: &mut Game, i: usize) {
     if !has_prim {
         if money >= 5200 && roll < 0.12 {
             list.push("longbow");
+        } else if money >= 3300 && roll < 0.24 {
+            list.push(["twin_mp7", "twin_lever"][g.rng.below(2)]);
         } else if money >= 4000 {
             list.push(if atk { "rook" } else { "sentinel" });
         } else if money >= 2900 {
@@ -376,6 +378,7 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
                     bot.burst_t -= dt;
                     if bot.burst_t > 0.0 || d < 10.0 {
                         buttons |= B_FIRE;
+                        if wdef.dual { buttons |= B_FIRE2; }
                     } else if bot.burst_t < -g.rng.range(profile.pause[0], profile.pause[1]) {
                         bot.burst_t = g.rng.range(profile.burst[0], profile.burst[1]);
                     }
@@ -553,6 +556,18 @@ mod tests {
             }
         }
         panic!("bot never fired at a visible opponent");
+    }
+
+    #[test]
+    fn bots_use_both_triggers_for_automatic_and_lever_akimbo_primaries() {
+        for id in ["twin_mp7", "twin_lever"] {
+            let mut g = duel(Difficulty::Expert);
+            g.players[0].prim = Some(Gun::new(by_id(id).unwrap()));
+            g.players[0].slot = 0;
+            first_trigger(&mut g, 120);
+            assert_eq!(g.players[0].buttons & (B_FIRE | B_FIRE2), B_FIRE | B_FIRE2,
+                       "{id} bot must use both guns");
+        }
     }
 
     #[test]

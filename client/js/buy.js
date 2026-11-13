@@ -22,6 +22,8 @@ const INFO = {
   frag:'Flush opponents out of cover with an explosive grenade. Carry one at a time.',
   flash:'Blind opponents before you push. Carry up to two flashbangs.',
   smoke:'Block a sightline with a smoke cloud. Carry one at a time.',
+  twin_mp7:'Hold left mouse to fire the left MP7, right mouse for the right, or both for automatic fire. No aiming mode.',
+  twin_lever:'Click left mouse for the left shotgun; right mouse for the right. Each hand cycles its lever between shots. No aiming mode.',
 };
 
 // Original lightweight illustrations: no image downloads or extra WebGL contexts.
@@ -37,6 +39,14 @@ function artwork(item) {
     if (item.cls === 7) shape = '<path d="M107 39 97 51 91 76 98 99 117 108 138 99 147 76 140 51 129 39ZM110 21H127V40H110Z"/><path class="bu-etch" d="M106 52H133M98 69H142M98 87H141M113 45V101M127 45V101"/>';
     else shape = '<path d="M101 37H138L143 44V99L136 106H104L97 99V44ZM108 21H132V37H108Z"/><path class="bu-etch" d="M98 53H142M98 88H142M109 62H131M109 72H131"/>';
     shape += '<path d="M128 22H147L154 67H147L139 31H128Z"/><circle class="bu-etch" cx="99" cy="24" r="9"/>';
+  } else if (item.id === 'twin_mp7') {
+    // Compact receivers, magazines in the grips, folding foregrips and wire stocks.
+    const mp7 = '<path d="M64 35H164V59H124L116 65H109L106 95H86L89 62H66ZM163 40H188V49H163ZM143 58H155L153 79H144Z"/><path d="M26 40H67V46H34V59H27ZM68 29H161V35H68ZM76 24H84V31H76ZM148 23H157V31H148Z"/><path d="M110 62V76H127L134 59H128L123 70H117V62Z"/><path class="bu-etch" d="M74 43H154M137 49V56M144 49V56M151 49V56M94 70 92 88M28 53H65"/>';
+    shape = `<g transform="translate(-15,-6) scale(.84)">${mp7}</g><g transform="translate(66,24) scale(.79)">${mp7}</g>`;
+  } else if (item.id === 'twin_lever') {
+    // Short barrels and bird's-head grips leave the large lever loops visible.
+    const lever = '<path d="M71 41H121V61H86L71 77 50 88 34 80 51 65 63 49Z"/><path d="M118 40H209V48H118ZM118 51H197V57H118ZM125 48H168V63H125ZM199 35H205V41H199ZM82 35H89V42H82Z"/><path d="M79 61 76 75Q83 92 103 86L124 67 119 61" fill="none" stroke="currentColor" stroke-width="6"/><path d="M96 60 93 71 100 75 103 71 99 69 102 60Z"/><path class="bu-etch" d="M75 49H112M136 51V61M145 51V61M154 51V61M48 77 66 66"/>';
+    shape = `<g transform="translate(-17,-6) scale(.83)">${lever}</g><g transform="translate(62,28) scale(.78)">${lever}</g>`;
   } else if (item.cls === 1) {
     const heavy = item.id.includes('mammoth');
     const pistol = `<path d="M53 39H${heavy ? 188 : 177}V55H139L132 66H105L99 101H73L83 58H53ZM110 58V71H127L134 57H127L122 66H117V58Z"/><path class="bu-etch" d="M61 48H163M89 65 82 92M151 41V53M158 41V53M165 41V53"/><path d="M64 35H71V40H64M155 35H164V40H155"/>`;
@@ -192,12 +202,13 @@ export class BuyMenu {
     const panel = this.el.querySelector('.bu-detail'), item = this.item(this.selected);
     if (!panel || !item) return;
     const state = this.state(item), gun = item.mag > 0;
-    const desc = INFO[item.id] || (item.dual ? 'Independent triggers: left mouse fires the left pistol; right mouse fires the right. No aiming mode.' : item.cls === 5 ? 'Precision at range. Right mouse aims through the scope. Settle your movement before taking the shot.' : item.cls === 2 ? 'Built for close quarters. Damage is shown per pellet; your spread is most effective up close.' : item.cls === 6 ? 'Sustained fire and a deep magazine. Control your bursts and plan around the longer reload.' : item.auto ? 'Automatic fire. Right mouse aims down sights. Short bursts help control recoil at range.' : 'A reliable sidearm. Click to fire and hold right mouse to aim down sights.');
+    const desc = INFO[item.id] || (item.dual ? 'Independent triggers: left mouse fires the left weapon; right mouse fires the right. No aiming mode.' : item.cls === 5 ? 'Precision at range. Right mouse aims through the scope. Settle your movement before taking the shot.' : item.cls === 2 ? 'Built for close quarters. Damage is shown per pellet; your spread is most effective up close.' : item.cls === 6 ? 'Sustained fire and a deep magazine. Control your bursts and plan around the longer reload.' : item.auto ? 'Automatic fire. Right mouse aims down sights. Short bursts help control recoil at range.' : 'A reliable sidearm. Click to fire and hold right mouse to aim down sights.');
+    const type = TYPE[item.cls] || 'TACTICAL EQUIPMENT';
     const stat = (name, value, ratio) => `<div class="bu-stat"><div><span>${name}</span><b>${value}</b></div><div class="bu-meter"><i style="width:${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%"></i></div></div>`;
-    const stats = gun ? stat(item.cls === 2 ? 'Damage / pellet' : 'Base damage', item.dmg, item.dmg / 115) + stat(item.dual ? 'Rate / hand' : 'Fire rate', `${Math.round(60 / item.interval)} RPM`, (60 / item.interval) / 900) + stat('Magazine', item.dual ? `${item.mag / 2} + ${item.mag / 2}` : `${item.mag} rounds`, item.mag / 100) + stat('Reload time', `${item.reload.toFixed(1)} s`, 1 - item.reload / 6) : `<div class="bu-gear-benefit"><span>${item.id === 'kit' ? 'DEFUSE TIME' : item.cls >= 7 ? 'CARRY CAPACITY' : 'BODY ARMOR'}</span><strong>${item.id === 'kit' ? '5 seconds' : item.cls >= 7 ? (item.cls === 8 ? '2 flashbangs' : '1 grenade') : '100 points'}</strong>${item.id === 'vesthelm' ? '<small>Includes helmet protection</small>' : ''}</div>`;
+    const stats = gun ? stat(item.cls === 2 ? 'Damage / pellet' : 'Base damage', item.dmg, item.dmg / 115) + stat(item.dual ? 'Rate / hand' : 'Fire rate', `${Math.round(60 / item.interval)} RPM`, (60 / item.interval) / 900) + stat(item.cls === 2 ? 'Shell capacity' : 'Magazine', item.dual ? `${item.mag / 2} + ${item.mag / 2}` : `${item.mag} ${item.cls === 2 ? 'shells' : 'rounds'}`, item.mag / 100) + stat('Reload time', `${item.reload.toFixed(1)} s`, 1 - item.reload / 6) : `<div class="bu-gear-benefit"><span>${item.id === 'kit' ? 'DEFUSE TIME' : item.cls >= 7 ? 'CARRY CAPACITY' : 'BODY ARMOR'}</span><strong>${item.id === 'kit' ? '5 seconds' : item.cls >= 7 ? (item.cls === 8 ? '2 flashbangs' : '1 grenade') : '100 points'}</strong>${item.id === 'vesthelm' ? '<small>Includes helmet protection</small>' : ''}</div>`;
     const replacement = gun ? this.weapons[item.cls === 1 ? this.me.se : this.me.pr] : null;
     const note = state.owned ? (state.stock ? 'You are carrying the maximum amount.' : 'Already in your loadout.') : replacement ? `Replaces ${replacement.name}. Your old weapon is dropped.` : state.price > this.me.mo ? `${money(state.price - this.me.mo)} more required.` : `Balance after purchase: ${money(this.me.mo - state.price)}`;
-    panel.innerHTML = `<div class="bu-detail-kicker">${item.dual ? 'AKIMBO SIDEARMS' : TYPE[item.cls] || 'TACTICAL EQUIPMENT'}</div><div class="bu-detail-art">${artwork(item)}</div><h3>${esc(item.name)}</h3><p class="bu-description">${esc(desc)}</p><div class="bu-stats">${stats}</div><div class="bu-purchase-area"><button class="bu-purchase" data-action="purchase" ${state.disabled ? 'disabled' : ''}><span>${this.pending ? 'PURCHASING…' : state.owned ? state.status : !state.affordable ? 'INSUFFICIENT FUNDS' : !this.me.cb ? 'BUYING CLOSED' : 'PURCHASE'}</span><strong>${money(state.price)}</strong></button><p class="bu-purchase-note">${esc(note)}</p></div>`;
+    panel.innerHTML = `<div class="bu-detail-kicker">${item.dual ? `AKIMBO ${type}S` : type}</div><div class="bu-detail-art">${artwork(item)}</div><h3>${esc(item.name)}</h3><p class="bu-description">${esc(desc)}</p><div class="bu-stats">${stats}</div><div class="bu-purchase-area"><button class="bu-purchase" data-action="purchase" ${state.disabled ? 'disabled' : ''}><span>${this.pending ? 'PURCHASING…' : state.owned ? state.status : !state.affordable ? 'INSUFFICIENT FUNDS' : !this.me.cb ? 'BUYING CLOSED' : 'PURCHASE'}</span><strong>${money(state.price)}</strong></button><p class="bu-purchase-note">${esc(note)}</p></div>`;
   }
   loadout() {
     const me = this.me;

@@ -206,6 +206,7 @@ function onEvent(ev) {
       }
       for (const h of ev.h) { world.tracer(from, h); world.puff(h, h[3] ? 0xb01818 : 0xd8c9a0, h[3] ? 0.09 : 0.06); }
       sfx.shot(cls, own ? null : ev.o);
+      if (weapon.id === 'twin_lever') sfx.leverCycle(own ? null : ev.o);
       break;
     }
     case 'swing': sfx.swing(posOf(ev.id), ev.hit); if (ev.id === myId) world.kick(0.7); break;

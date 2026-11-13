@@ -134,7 +134,7 @@ export class World {
     this.vmCls = -1; this.vmWeapon = null; this.vmKick = 0; this.vmSwitch = 0; this.vmBob = 0; this.vmAim = 0;
     this.vmHands = [new THREE.Group(), new THREE.Group()];
     this.vm.add(...this.vmHands);
-    this.handKick = [0, 0]; this.flashTimers = [0, 0];
+    this.handKick = [0, 0]; this.flashTimers = [0, 0]; this.handCycleAge = [Infinity, Infinity];
     this.vmReload = 0; this.vmTime = 0;
     this.muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22),
       new THREE.MeshBasicMaterial({ map: canvasTex(64, (g, s) => {
@@ -252,7 +252,7 @@ export class World {
       if (f.dispose) { f.o.geometry.dispose(); if (f.o.material !== this.tracerMat) f.o.material.dispose(); }
     }
     this.fx.length = 0; this.bomb.visible = false;
-    this.handKick.fill(0); this.flashTimers.fill(0); this.vmKick = this.vmAim = 0;
+    this.handKick.fill(0); this.flashTimers.fill(0); this.handCycleAge.fill(Infinity); this.vmKick = this.vmAim = 0;
     this.muzzles.forEach(m => { m.visible = false; });
     // Render lists otherwise retain removed map objects until the next frame.
     this.renderer.renderLists.dispose();
@@ -319,8 +319,16 @@ export class World {
   }
   setItems(list, weapons) {
     this.syncSimple(this.items, list, e => {
-      const g = gunModel(weapons[e[1]]); g.rotation.z = Math.PI / 2; g.scale.setScalar(1.3);
-      const h = new THREE.Group(); g.position.y = 0.06; h.add(g); return h;
+      const weapon = weapons[e[1]], h = new THREE.Group();
+      for (let side = 0; side < (weapon.dual ? 2 : 1); side++) {
+        const gun = gunModel(weapon); gun.rotation.z = Math.PI / 2; gun.scale.setScalar(1.3);
+        if (weapon.dual) { gun.position.x = side ? .16 : -.16; gun.rotation.y = side ? -.08 : .08; }
+        // Keep the entire model above the floor, including the large lever loop.
+        gun.updateMatrixWorld(true);
+        gun.position.y = .035 - new THREE.Box3().setFromObject(gun).min.y;
+        h.add(gun);
+      }
+      return h;
     });
   }
   setNades(list, weapons) {
@@ -375,7 +383,7 @@ export class World {
     const w = weaponInfo(weapon);
     if (w.id === this.vmWeapon?.id) return;
     this.vmWeapon = w; this.vmCls = w.cls; this.vmSwitch = 1; this.vmAim = 0;
-    this.handKick.fill(0); this.flashTimers.fill(0);
+    this.handKick.fill(0); this.flashTimers.fill(0); this.handCycleAge.fill(Infinity);
     this.vmHands.forEach((hand, side) => {
       hand.clear(); hand.visible = side === 1 || !!w.dual;
       const gun = gunModel(w); gun.name = 'weapon';
@@ -385,12 +393,13 @@ export class World {
       }
       const muzzle = this.muzzles[side]; muzzle.position.set(...gun.userData.muzzle); muzzle.visible = false; hand.add(muzzle);
       hand.userData.sightY = gun.userData.sightY;
+      hand.userData.dualHip = gun.userData.dualHip;
     });
   }
   kick(amount, hand = 1) {
     const side = this.vmWeapon?.dual ? (hand === 0 ? 0 : 1) : 1;
     this.handKick[side] = Math.min(1.1, this.handKick[side] + amount);
-    this.flashTimers[side] = .055;
+    this.flashTimers[side] = .055; this.handCycleAge[side] = 0;
     this.vmKick = Math.min(1, this.vmKick + amount * .5);
   }
 
@@ -429,23 +438,37 @@ export class World {
       const bob = Math.min(1, (view.speed || 0) / 6) * (1 - aim * .94);
       const lower = Math.max(this.vmSwitch, this.vmReload * .65);
       const reloadWave = this.vmReload * Math.sin(this.vmTime * 5 + side * .8);
-      const hipX = dual ? sign * .23 : .20;
-      const hipY = dual ? -.15 : -.14;
+      const hip = hand.userData.dualHip || [.23, -.15, -.45];
+      const hipX = dual ? sign * hip[0] : .20;
+      const hipY = dual ? hip[1] : -.14;
       const sightY = hand.userData.sightY || .12;
       hand.position.set(
         hipX * (1 - aim) + Math.cos(this.vmBob) * .006 * bob,
         THREE.MathUtils.lerp(hipY, -sightY, aim) - lower * .19 + Math.abs(Math.sin(this.vmBob)) * .008 * bob,
-        THREE.MathUtils.lerp(dual ? -.45 : -.43, -.26, aim) + kick * .055 + lower * .08);
+        THREE.MathUtils.lerp(dual ? hip[2] : -.43, -.26, aim) + kick * .055 + lower * .08);
       hand.rotation.set(kick * .13 - lower * .48, (dual ? sign * -.035 : .025) * (1 - aim), sign * (lower * .32 + reloadWave * .06));
       const gun = hand.getObjectByName('weapon');
       const slide = gun?.getObjectByName('slide');
       if (slide) slide.position.z = kick * .045;
+      this.handCycleAge[side] += dt;
+      const lever = gun?.getObjectByName('lever');
+      if (lever) {
+        const duration = Math.max(.4, this.vmWeapon.interval * .9);
+        const phase = Math.max(0, Math.min(1, (this.handCycleAge[side] - .07) / duration));
+        const cycle = Math.sin(phase * Math.PI);
+        lever.rotation.x = cycle * 1.05 + this.vmReload * .24;
+        const bolt = gun.getObjectByName('bolt');
+        if (bolt) bolt.position.z = cycle * .057 + this.vmReload * .018;
+        // Each wrist follows its own lever stroke, independently of the other gun.
+        hand.rotation.x -= cycle * .065;
+        hand.rotation.z += sign * cycle * .12;
+      }
       const magazine = gun?.getObjectByName('magazine');
       if (magazine) magazine.position.y = -this.vmReload * (.07 + Math.max(0, reloadWave) * .08);
       const flash = this.muzzles[side];
       flash.visible = this.flashTimers[side] > 0 && this.vmCls >= 1 && this.vmCls <= 6;
       flash.rotation.z = Math.random() * Math.PI;
-      flash.scale.setScalar(dual || this.vmCls === 1 ? .65 : 1);
+      flash.scale.setScalar(this.vmCls === 2 ? 1 : dual || this.vmCls === 1 ? .65 : 1);
     }
     if (view.firstPerson && !view.scoped) {
       this.renderer.clearDepth();

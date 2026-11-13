@@ -204,6 +204,107 @@ function longGun(w) {
   g.userData = { muzzle: [0, .045, muzzleZ - (suppressed ? .16 : .042)], sightY, length: -muzzleZ };
   return g;
 }
+// Compact grip-fed PDW. The folded foregrip and collapsed stock keep each
+// complete gun legible when two are held at once.
+function mp7(w) {
+  const p = new Parts(), magazine = new Parts(), bolt = new Parts();
+  const polymer = mat(0x3e4747, .12, .57), slideSteel = mat(0x718084, .52, .34);
+  p.box(polymer, .063, .096, .295, 0, .035, -.105);
+  p.box(MAT.black, .048, .037, .254, 0, -.024, -.11);
+  p.box(slideSteel, .061, .018, .23, 0, .087, -.12);
+  addGrip(p, polymer, .012, -.099, .157); triggerGuard(p, -.004, -.043);
+  magazine.box(MAT.black, .034, .118, .043, 0, -.181, .034, -.16);
+  magazine.box(MAT.edge, .043, .012, .054, 0, -.241, .044, -.16);
+  for (const x of [-.018, .018]) for (let k = 0; k < 3; k++) {
+    magazine.box(slideSteel, .002, .052, .003, x, -.197, .022 + k * .011, -.16);
+  }
+  // Hinged foregrip folded below the front receiver.
+  p.box(polymer, .036, .029, .102, 0, -.031, -.205, -.04);
+  p.add('cylinder', MAT.edge, [.012,.068,.012], [0,-.013,-.154], [0,0,Math.PI/2]);
+  for (let k = 0; k < 5; k++) p.box(MAT.black, .038, .004, .006, 0, -.045, -.24 + k * .017);
+  p.tube(MAT.steel, .014, .07, 0, .04, -.28);
+  p.tube(MAT.black, .022, .036, 0, .04, -.321);
+  p.tube(MAT.edge, .018, .008, 0, .04, -.341);
+  p.tube(MAT.black, .010, .010, 0, .04, -.347);
+  for (const x of [-.023, .023]) {
+    p.box(slideSteel, .008, .014, .17, x, .044, .058);
+    p.box(MAT.black, .012, .015, .036, x, .044, .133);
+  }
+  p.box(polymer, .06, .105, .025, 0, .005, .152);
+  p.box(MAT.black, .064, .09, .012, 0, .002, .167);
+  rails(p, .26, -.117, .102, .048);
+  ironSights(p, -.235, -.002, .127, .104);
+  for (const side of [-1, 1]) {
+    p.box(MAT.black, .003, .024, .055, side * .032, .047, -.13);
+    for (let k = 0; k < 4; k++) p.box(MAT.black, .003, .019, .008, side * .032, .037, -.209 + k * .016);
+    p.box(MAT.edge, .004, .009, .022, side * .034, -.008, -.005, 0, 0, side * .22);
+    for (const z of [-.23, -.17, .018]) p.bead(MAT.edge, side * .033, .008, z, .0035);
+  }
+  // Reciprocating bolt is independently animated for each hand.
+  bolt.box(slideSteel, .003, .018, .048, .034, .047, -.128);
+  bolt.box(MAT.black, .013, .008, .012, .04, .049, -.116);
+  p.box(MAT.black, .04, .012, .018, 0, .072, .054);
+  p.box(MAT.edge, .061, .009, .014, 0, .074, .055);
+  marking(w, p, .0327, .053, -.058, .105);
+  const g = p.build(); g.add(magazine.build('magazine'), bolt.build('slide'));
+  g.userData = { muzzle:[0,.04,-.354], sightY:.13, length:.52, dualHip:[.235,-.175,-.44] };
+  return g;
+}
+
+// Short lever-action shotgun with a bird's-head grip, tubular magazine and
+// articulated oversized loop. Its action remains visible during cycling.
+function leverShotgun(w) {
+  const p = new Parts(), action = new Parts(), lever = new Parts();
+  const walnut = mat(0x805235, .05, .65), grain = mat(0x4d3024, .05, .7);
+  const blued = mat(0x46525a, .64, .34), receiver = mat(0x8b8c80, .6, .4);
+  p.box(receiver, .06, .08, .19, 0, .023, -.059);
+  p.box(blued, .055, .023, .20, 0, .069, -.065);
+  p.tube(blued, .022, .422, 0, .052, -.343);
+  p.tube(MAT.edge, .024, .016, 0, .052, -.556);
+  p.tube(MAT.black, .0175, .018, 0, .052, -.565);
+  p.tube(blued, .017, .38, 0, -.002, -.327);
+  p.tube(MAT.edge, .018, .015, 0, -.002, -.523);
+  // Warm wooden forend, barrel band, and restrained longitudinal grain.
+  p.box(walnut, .069, .057, .208, 0, -.009, -.296);
+  for (const z of [-.206, -.392]) p.box(blued, .075, .065, .014, 0, -.008, z);
+  for (const side of [-1, 1]) for (let k = 0; k < 4; k++) {
+    p.box(grain, .0016, .0018, .15 - k * .012, side * .035, -.026 + k * .011, -.294 + k * .003, 0, side * .006, side * .018);
+  }
+  // Cut-down curved grip rather than the rifle's full shoulder stock.
+  p.box(walnut, .05, .06, .13, 0, -.019, .08, -.22);
+  p.box(walnut, .053, .094, .062, 0, -.056, .127, -.47);
+  p.add('sphere', walnut, [.027,.041,.031], [0,-.094,.15], [-.3,0,0]);
+  p.box(MAT.black, .054, .012, .059, 0, -.125, .153, -.35);
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 4; k++) p.box(grain, .0018, .0015, .065, side * .027, -.04 - k * .013, .116 + k * .006, -.3);
+    p.bead(MAT.brass, side * .031, .018, -.01, .004);
+    p.bead(MAT.edge, side * .031, .016, -.121, .0037);
+    p.box(MAT.black, .002, .013, .047, side * .031, .041, -.075);
+    p.box(MAT.edge, .002, .003, .042, side * .032, .046, -.076);
+  }
+  // Hammer and top-loading bolt. The action retracts with the lever cycle.
+  p.box(blued, .016, .029, .019, 0, .075, .029, -.35);
+  p.box(MAT.edge, .026, .006, .018, 0, .09, .036, -.35);
+  action.box(blued, .039, .012, .095, 0, .074, -.048);
+  action.box(MAT.brass, .014, .004, .033, .01, .08, -.06);
+  p.box(MAT.black, .009, .029, .010, 0, -.037, -.024, -.25);
+  // The loop pivots at the receiver's lower front corner.
+  lever.add('ring', blued, [.069,.047,.026], [0,-.061,.065], [0,Math.PI/2,0]);
+  lever.box(blued, .012, .046, .017, 0, -.018, .006, -.24);
+  lever.box(MAT.edge, .014, .008, .069, 0, -.104, .065);
+  p.add('cylinder', MAT.edge, [.008,.067,.008], [0,-.014,-.115], [0,0,Math.PI/2]);
+  ironSights(p, -.525, -.038, .09, .074);
+  for (let k = 0; k < 3; k++) {
+    p.tube(mat(0x963e32, .15, .5), .009, .046, -.04, .009, -.08 - k * .025);
+    p.tube(MAT.brass, .0095, .008, -.04, .009, -.053 - k * .025);
+  }
+  marking(w, p, .0312, .023, -.064, .14);
+  const g = p.build(), loop = lever.build('lever'); loop.position.set(0, -.014, -.115);
+  g.add(loop, action.build('bolt'));
+  g.userData = { muzzle:[0,.052,-.577], sightY:.095, length:.75, dualHip:[.25,-.18,-.47], leverAction:true };
+  return g;
+}
+
 function equipment(w) {
   const p = new Parts(), cls = w.cls;
   if (cls === 0) {
@@ -233,7 +334,7 @@ function equipment(w) {
 
 export function gunModel(weapon) {
   const w = weaponInfo(weapon), key = `${w.id}/${w.cls}/${w.zoom || 0}`;
-  if (!templates.has(key)) templates.set(key, w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
+  if (!templates.has(key)) templates.set(key, w.id === 'twin_mp7' ? mp7(w) : w.id === 'twin_lever' ? leverShotgun(w) : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
   return templates.get(key).clone(true);
 }
 

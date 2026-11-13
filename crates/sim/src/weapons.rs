@@ -1,4 +1,4 @@
-//! Weapon table. All names are fictional.
+//! Shared weapon definitions for the server and client prediction.
 
 pub const C_KNIFE: u8 = 0;
 pub const C_PISTOL: u8 = 1;
@@ -40,7 +40,7 @@ pub struct Weapon {
     pub pellets: u8,
     /// Aim magnification. Values >= 4 use a telescopic scope.
     pub zoom: f32,
-    /// Two independently fired sidearms, with half of mag capacity in each hand.
+    /// Two independently fired weapons, with half of mag capacity in each hand.
     pub dual: bool,
     /// Holding the secondary trigger aims this firearm.
     pub ads: bool,
@@ -85,7 +85,7 @@ pub const BOMB: usize = 4;
 pub const PISTOL_ATK: usize = 5;
 pub const PISTOL_DEF: usize = 6;
 
-pub static WEAPONS: [Weapon; 29] = [
+pub static WEAPONS: [Weapon; 31] = [
     with(gun("knife", "Combat Knife", C_KNIFE, 0, 0, 45.0, 0.45, 0, 0, 0.0, true, 0.0, 0.0, 0.85, 6.35), 1.0, 1500, 1, 0.0),
     gun("frag", "Frag Grenade", C_FRAG, 0, 300, 100.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.6, 6.2),
     gun("flash", "Flashbang", C_FLASH, 0, 200, 0.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.0, 6.2),
@@ -122,6 +122,9 @@ pub static WEAPONS: [Weapon; 29] = [
     // Akimbo: mag is the combined capacity; mouse buttons fire each hand.
     akimbo(gun("twin_kestrel", "Twin Kestrels", C_PISTOL, 0, 500, 22.0, 0.16, 30, 120, 2.9, false, 0.016, 0.014, 0.50, 6.2)),
     akimbo(gun("twin_mammoth", "Twin Mammoths", C_PISTOL, 0, 750, 46.0, 0.34, 14, 56, 3.3, false, 0.014, 0.035, 0.75, 6.0)),
+    // Dual primaries: keep these appended so existing weapon indices stay stable.
+    akimbo(with(gun("twin_mp7", "Dual MP7", C_SMG, 0, 2600, 18.0, 0.075, 80, 240, 3.6, true, 0.024, 0.008, 0.52, 5.9), 0.87, 600, 1, 0.0)),
+    akimbo(with(gun("twin_lever", "Twin Lever-Action", C_SHOTGUN, 0, 2400, 17.0, 0.85, 10, 40, 4.0, false, 0.065, 0.055, 0.50, 5.65), 0.68, 900, 7, 0.0)),
 ];
 
 pub fn by_id(id: &str) -> Option<usize> {
