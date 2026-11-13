@@ -60,9 +60,9 @@ export class Sfx {
     o.connect(g); g.connect(dst); o.start(t); o.stop(t + dur + 0.02);
   }
 
-  shot(cls, pos) {
+  shot(cls, pos, heavy = false) {
     const o = this.out(pos, pos ? 1 : 0.8, 120); if (!o) return;
-    const p = {
+    const p = heavy ? [0.65, 1100, 1.45, 55, 0.36] : {
       1: [0.16, 2600, 0.9, 150, 0.10], 2: [0.34, 1300, 1.2, 90, 0.22], 3: [0.13, 3000, 0.8, 170, 0.08],
       4: [0.22, 2000, 1.0, 110, 0.14], 5: [0.5, 1500, 1.3, 70, 0.3], 6: [0.22, 1700, 1.0, 100, 0.15],
     }[cls] || [0.2, 2000, 1, 120, 0.1];
@@ -73,6 +73,11 @@ export class Sfx {
     const o = this.out(pos, 0.24, 24); if (!o) return;
     this.tone(o, { freq: 1250, to: 500, dur: 0.045, vol: 0.35, type: 'square', delay: 0.16 });
     this.tone(o, { freq: 850, to: 350, dur: 0.035, vol: 0.4, type: 'square', delay: 0.68 });
+  }
+  boltCycle(pos) {
+    const o = this.out(pos, 0.28, 28); if (!o) return;
+    this.tone(o, { freq: 1100, to: 420, dur: 0.06, vol: 0.3, type: 'square', delay: 0.3 });
+    this.tone(o, { freq: 700, to: 250, dur: 0.05, vol: 0.35, type: 'square', delay: 1.45 });
   }
   swing(pos, hit) {
     const o = this.out(pos, 0.5, 25); if (!o) return;

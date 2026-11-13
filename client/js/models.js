@@ -1,6 +1,7 @@
 // Original procedural weapon assets. Static details are baked by material and
 // shared between instances; only slides, hands and magazines need transforms.
 import * as THREE from '../vendor/three.module.min.js';
+import { buildTitan } from './titan.js';
 
 const bevelShape = new THREE.Shape();
 bevelShape.moveTo(-.46, -.46); bevelShape.lineTo(.46, -.46); bevelShape.lineTo(.46, .46); bevelShape.lineTo(-.46, .46); bevelShape.closePath();
@@ -26,6 +27,17 @@ const MAT = {
   glove: mat(0x494b3c), gloveDark: mat(0x262c29), sleeve: mat(0x687361),
   leather: mat(0x654c32), sight: mat(0xc4dd91, 0.2, 0.32),
 };
+// One shared brushed finish adds machining texture without per-gun downloads.
+if (typeof document !== 'undefined') {
+  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;
+  const g=canvas.getContext('2d');g.fillStyle='#f4f4f4';g.fillRect(0,0,512,128);
+  for(let i=0;i<1500;i++){
+    g.fillStyle=`rgba(65,70,74,${.018+(i%7)*.006})`;
+    g.fillRect((i*137)%512,(i*37)%128,8+(i%41),.5);
+  }
+  const finish=new THREE.CanvasTexture(canvas);finish.colorSpace=THREE.SRGBColorSpace;finish.anisotropy=4;
+  for(const name of ['steel','black','edge','silver'])MAT[name].map=finish;
+}
 const scratch = new THREE.Object3D();
 class Parts {
   constructor() { this.buckets = new Map(); }
@@ -64,6 +76,75 @@ class Parts {
 export function weaponInfo(weapon) {
   return typeof weapon === 'number' ? { cls: weapon, id: `class_${weapon}`, zoom: 0, dual: false } : weapon || { cls: 0, id: 'knife' };
 }
+// Attachments travel with the gun through purchases, drops and remote snapshots.
+export function withOptic(weapon, optic = weapon?.optic || 0, definitions) {
+  const w = weaponInfo(weapon), nativeZoom = w.nativeZoom ?? w.baseZoom ?? w.zoom ?? 0;
+  const supported = !w.dual && w.cls >= 1 && w.cls <= 6 && w.cls !== 5 && (!Array.isArray(w.optics) || w.optics.includes(optic));
+  const selected = supported && (optic === 1 || optic === 2) ? optic : 0;
+  const fromServer = definitions?.find?.(item => item.index === selected || item.value === selected);
+  const zoom = selected ? fromServer?.zoom || (selected === 1 ? 1.5 : 4) : nativeZoom;
+  return { ...w, nativeZoom, optic: selected, zoom, opticName: selected ? fromServer?.name || (selected === 1 ? 'Red dot' : 'ACOG 4×') : '' };
+}
+export function weaponModelKey(weapon) {
+  const w = weaponInfo(weapon);
+  return `${w.id}/${w.cls}/${w.optic || 0}/${w.zoom || 0}`;
+}
+
+// Etched screw slots and machining lines are baked into their receiver batch.
+function screw(p, x, y, z, radius = .0035) {
+  p.add('cylinder', MAT.edge, [radius,.0018,radius], [x,y,z], [0,0,Math.PI/2]);
+  p.box(MAT.black, .002, radius * .28, radius * 1.35, x + Math.sign(x) * .001, y, z, .6);
+}
+function lathe(p, center, length, radius, count = 8) {
+  for (let i = 0; i < count; i++) p.tube(MAT.black, radius, .0015, center[0], center[1], center[2] - length / 2 + length * i / (count - 1));
+}
+
+function opticModel(type, y, z = -.10, pistolMount = false) {
+  const p = new Parts(), g = new THREE.Group(); g.name = type === 1 ? 'red_dot' : 'acog';
+  const body = mat(0x273238, .48, .33), edge = mat(0x76817d, .55, .36);
+  const base = pistolMount ? .088 : .08;
+  p.box(body, .052, .012, type === 1 ? .07 : .13, 0, base + .006, z);
+  p.box(edge, .038, Math.max(.008,y - base - .035), .027, 0, (base + y - .027) / 2, z);
+  for (const side of [-1,1]) {
+    p.box(body,.012,.015,.025,side*.026,base+.008,z+.016);
+    screw(p,side*.033,base+.01,z+.016,.004);
+  }
+  if (type === 1) {
+    // Open tube: rings and side struts never paint over the sight picture.
+    for (const dz of [-.021,.021]) p.add('ring',body,[.030,.030,.020],[0,y,z+dz]);
+    for (const side of [-1,1]) p.box(body,.008,.024,.046,side*.030,y,z);
+    p.box(body,.037,.007,.047,0,y+.030,z);
+    p.add('cylinder',body,[.010,.012,.010],[.039,y,z],[0,0,Math.PI/2]);
+    p.box(edge,.008,.003,.013,.046,y,z);
+    p.box(body,.018,.012,.028,0,y-.033,z+.004);
+    p.box(mat(0xb44a35,.12,.5),.006,.002,.012,0,y+.034,z-.005);
+  } else {
+    // Compact prism body, large objective bell and fiber-optic light collector.
+    p.tube(body,.028,.134,0,y,z-.015);
+    for (const dz of [-.091,.065]) p.add('ring',body,[.034,.034,.027],[0,y,z+dz]);
+    p.box(body,.065,.039,.077,0,y-.023,z-.012);
+    p.box(edge,.008,.008,.065,-.034,y-.016,z-.01);
+    p.add('cylinder',body,[.015,.014,.015],[0,y+.036,z-.005]);
+    p.add('cylinder',body,[.012,.015,.012],[.036,y,z+.005],[0,0,Math.PI/2]);
+    for (let i=0;i<4;i++) p.box(edge,.003,.011,.002,.045,y-.004,z-.002+i*.004);
+    p.box(body,.015,.009,.099,0,y+.035,z-.024);
+    p.box(mat(0xa43125,.1,.3),.006,.005,.09,0,y+.041,z-.024);
+    p.box(MAT.black,.012,.006,.032,0,y+.042,z+.007);
+  }
+  g.add(p.build());
+  const lensZ = z + (type === 1 ? .020 : .065);
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(type === 1 ? .026 : .029,32),new THREE.MeshBasicMaterial({color:0x76c6c2,transparent:true,opacity:type===1?.07:.3,depthWrite:false,side:THREE.DoubleSide,toneMapped:false}));
+  lens.name='optic_lens';lens.position.set(0,y,lensZ);g.add(lens);
+  if (type === 1) {
+    const dot = new THREE.Group();dot.name='optic_reticle';dot.position.set(0,y,lensZ+.001);dot.visible=false;
+    for (const [r,opacity] of [[.0018,.25],[.0008,1]]) {
+      const disc=new THREE.Mesh(new THREE.CircleGeometry(r,16),new THREE.MeshBasicMaterial({color:0xff291b,transparent:true,opacity,depthWrite:false,depthTest:false,toneMapped:false}));disc.renderOrder=20;dot.add(disc);
+    }
+    g.add(dot);
+  }
+  return g;
+}
+
 function ironSights(p, frontZ, rearZ, y, frontBase = .078) {
   p.box(MAT.black, .029, .008, .012, 0, y - .010, rearZ);
   for (const x of [-.011, .011]) {
@@ -95,7 +176,7 @@ function marking(w, p, x, y, z, width = .13) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 128;
   const g = c.getContext('2d');
   g.fillStyle = '#c0c6b5'; g.font = 'bold 31px monospace'; g.fillText((w.name || w.id).replace('Twin ', '').toUpperCase(), 8, 39);
-  g.font = '20px monospace'; g.fillStyle = '#869385'; g.fillText(`BP  •  ${w.cls === 1 ? '9 × 19' : 'PRECISION SYSTEMS'}  •  0047`, 10, 82);
+  g.font = '20px monospace'; g.fillStyle = '#869385'; g.fillText(`BP  •  ${w.id === 'twin_lever' ? '12 GA  ·  LEVER ACTION' : w.id === 'titan' ? '.50 BMG  ·  BOLT ACTION' : w.cls === 1 ? '9 × 19' : 'PRECISION SYSTEMS'}  •  0047`, 10, 82);
   g.fillRect(10, 103, 190, 3);
   const texture = new THREE.CanvasTexture(c); texture.colorSpace = THREE.SRGBColorSpace;
   const material = new THREE.MeshStandardMaterial({ map: texture, transparent: true, depthWrite: false, roughness: .52, metalness: .25, polygonOffset: true, polygonOffsetFactor: -1 });
@@ -120,17 +201,25 @@ function pistol(w) {
   slide.box(MAT.black, .023, .007, .052, .02, .082, -.09);
   slide.box(MAT.brass, .012, .004, .027, .02, .084, -.085);
   for (let i = 0; i < 8; i++) for (const side of [-1, 1]) slide.box(MAT.black, .002, .032, .003, side * .028, .055, -.016 - i * .006, 0, 0, -.16 * side);
-  ironSights(slide, -.105 - length / 2 + .025, -.105 + length / 2 - .015, .09);
+  if (!w.optic) ironSights(slide, -.105 - length / 2 + .025, -.105 + length / 2 - .015, .09);
+  for (const side of [-1,1]) {
+    screw(body, side * .025, -.07, .018, .003);
+    body.box(MAT.edge,.002,.004,.026,side*.027,.01,-.021);
+    for(let k=0;k<4;k++)body.box(MAT.black,.002,.016,.002,side*.026,-.116+k*.009,.04);
+  }
+  lathe(body,[0,.045,-.11-length/2+.02],.018,.0135,5);
   marking(w, slide, .0281, .055, -.12, length*.63);
   const g = body.build(); g.add(slide.build('slide'));
-  g.userData = { muzzle: [0, .045, -.124 - length / 2], sightY: .095, length };
+  if (w.optic) g.add(opticModel(w.optic, w.optic === 1 ? .135 : .155, -.085, true));
+  g.userData = { muzzle: [0, .045, -.124 - length / 2], sightY: w.optic === 1 ? .135 : w.optic === 2 ? .155 : .095, length };
   return g;
 }
 function longGun(w) {
   const p = new Parts(), magazine = new Parts();
   const cls = w.cls, bullpup = /bastion|volt/.test(w.id), wood = /rook|ram|jackal/.test(w.id);
   const suppressed = /cricket/.test(w.id), heavy = cls === 6, sniper = cls === 5, smg = cls === 3, shotgun = cls === 2;
-  const scoped = sniper || (w.zoom || 0) >= 2;
+  const attached = !sniper && (w.optic === 1 || w.optic === 2);
+  const scoped = sniper || (!attached && (w.nativeZoom ?? w.zoom ?? 0) >= 2);
   const furniture = wood ? mat(0x795034, .05, .73) : /sentinel|sabre|drifter/.test(w.id) ? mat(0x7a7b58, .12, .68) : /cinder|bastion/.test(w.id) ? mat(0x9e8b67, .13, .63) : MAT.rubber;
   const receiver = /longbow|viper/.test(w.id) ? mat(0x8b947b, .55, .4) : MAT.steel;
   const barrelLength = sniper ? .52 : shotgun ? .44 : smg ? .22 : .35;
@@ -177,7 +266,7 @@ function longGun(w) {
     p.tube(MAT.black, .031, .20, 0, .045, muzzleZ - .055);
     for (let k = 0; k < 5; k++) p.tube(MAT.steel, .032, .005, 0, .045, muzzleZ - .12 + k * .035);
   }
-  if (!wood || scoped) rails(p, .25, -.12, .078, heavy ? .072 : .053);
+  if (!wood || scoped || attached) rails(p, .25, -.12, .078, heavy ? .072 : .053);
   let sightY = .110;
   if (scoped) {
     sightY = sniper ? .172 : .15;
@@ -194,13 +283,21 @@ function longGun(w) {
       p.box(MAT.black, .065, .013, .085, 0, .108, -.12);
       p.bead(mat(0xe04c36, .2, .3), 0, .15, -.16, .0025);
     }
-  } else ironSights(p, -.31 - handguardLength / 2, .015, .105, .06);
+  } else if (!attached) ironSights(p, -.31 - handguardLength / 2, .015, .105, .06);
+  if (attached) sightY = w.optic === 1 ? .15 : .17;
   if (sniper || heavy) for (const x of [-.025, .025]) {
     p.box(MAT.black, .012, .19, .015, x, -.05, -.43, -.22, 0, x > 0 ? -.15 : .15);
     p.box(MAT.rubber, .025, .012, .035, x * 1.7, -.14, -.41);
   }
+  for (const side of [-1,1]) {
+    screw(p,side*.039,.012,-.015,.004);screw(p,side*.039,.012,-.224,.003);
+    p.box(MAT.edge,.0015,.002,.12,side*.035,.055,-.095);
+    p.box(MAT.black,.0015,.002,.09,side*.035,-.013,-.09);
+  }
+  lathe(p,[0,.045,muzzleZ],.035,.0195,6);
   marking(w, p, .035, .024, -.105, .16);
   const g = p.build(); g.add(magazine.build('magazine'));
+  if (attached) g.add(opticModel(w.optic, sightY));
   g.userData = { muzzle: [0, .045, muzzleZ - (suppressed ? .16 : .042)], sightY, length: -muzzleZ };
   return g;
 }
@@ -251,57 +348,105 @@ function mp7(w) {
   return g;
 }
 
-// Short lever-action shotgun with a bird's-head grip, tubular magazine and
-// articulated oversized loop. Its action remains visible during cycling.
+let walnutMaterial;
+function walnutFinish() {
+  if (!walnutMaterial && typeof document === 'undefined') return mat(0x805235,.06,.48);
+  if (!walnutMaterial) {
+    const canvas = document.createElement('canvas'); canvas.width=512;canvas.height=256;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#704329';ctx.fillRect(0,0,512,256);
+    for(let row=0;row<150;row++){
+      ctx.strokeStyle=row%3===0?'rgba(38,18,10,.32)':'rgba(194,137,78,.15)';ctx.lineWidth=row%7===0?1.4:.55;
+      ctx.beginPath();
+      for(let x=0;x<=512;x+=8){const y=row*1.9+Math.sin(x*.017+row*.25)*3+Math.sin(x*.043+row)*1.2;if(!x)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.stroke();
+    }
+    for(let i=0;i<450;i++){ctx.fillStyle='rgba(35,17,8,.14)';ctx.fillRect((i*197)%512,(i*67)%256,1,2);}
+    const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;
+    walnutMaterial=new THREE.MeshStandardMaterial({map:texture,color:0xe4c4a0,metalness:.06,roughness:.48});
+  }
+  return walnutMaterial;
+}
+function receiverProfiles() {
+  if (primitive.m1887Receiver) return;
+  const profile=new THREE.Shape();
+  profile.moveTo(-.086,-.049);profile.lineTo(.108,-.049);
+  profile.quadraticCurveTo(.14,-.04,.14,.013);profile.lineTo(.14,.065);
+  profile.quadraticCurveTo(.13,.105,.064,.12);profile.lineTo(-.006,.12);
+  profile.quadraticCurveTo(-.084,.12,-.105,.056);profile.lineTo(-.104,-.017);
+  profile.quadraticCurveTo(-.102,-.045,-.086,-.049);profile.closePath();
+  const create=(shape,width)=>{const g=new THREE.ExtrudeGeometry(shape,{depth:width,bevelEnabled:true,bevelThickness:.0025,bevelSize:.0025,bevelSegments:2,steps:1,curveSegments:12});g.translate(0,0,-width/2);g.rotateY(Math.PI/2);return g;};
+  primitive.m1887Receiver=create(profile,.074);
+  const breech=new THREE.Shape();breech.moveTo(-.05,-.025);breech.lineTo(.075,-.025);breech.lineTo(.075,.016);
+  breech.quadraticCurveTo(.044,.071,-.013,.071);breech.quadraticCurveTo(-.058,.063,-.05,-.025);breech.closePath();
+  primitive.m1887Breech=create(breech,.055);
+  const grip=new THREE.Shape();grip.moveTo(-.065,.022);
+  grip.bezierCurveTo(-.112,.028,-.155,.003,-.176,-.03);
+  grip.bezierCurveTo(-.187,-.063,-.203,-.093,-.236,-.108);
+  grip.bezierCurveTo(-.253,-.117,-.243,-.135,-.224,-.14);
+  grip.bezierCurveTo(-.193,-.15,-.163,-.122,-.145,-.086);
+  grip.bezierCurveTo(-.129,-.053,-.117,-.024,-.065,-.02);grip.closePath();
+  primitive.m1887Grip=create(grip,.059);
+}
+// M1887 silhouette: tall, rounded receiver with a rolling top breech, a short
+// barrel above the magazine tube, a bird's-head walnut grip and large loop.
 function leverShotgun(w) {
-  const p = new Parts(), action = new Parts(), lever = new Parts();
-  const walnut = mat(0x805235, .05, .65), grain = mat(0x4d3024, .05, .7);
-  const blued = mat(0x46525a, .64, .34), receiver = mat(0x8b8c80, .6, .4);
-  p.box(receiver, .06, .08, .19, 0, .023, -.059);
-  p.box(blued, .055, .023, .20, 0, .069, -.065);
-  p.tube(blued, .022, .422, 0, .052, -.343);
-  p.tube(MAT.edge, .024, .016, 0, .052, -.556);
-  p.tube(MAT.black, .0175, .018, 0, .052, -.565);
-  p.tube(blued, .017, .38, 0, -.002, -.327);
-  p.tube(MAT.edge, .018, .015, 0, -.002, -.523);
-  // Warm wooden forend, barrel band, and restrained longitudinal grain.
-  p.box(walnut, .069, .057, .208, 0, -.009, -.296);
-  for (const z of [-.206, -.392]) p.box(blued, .075, .065, .014, 0, -.008, z);
-  for (const side of [-1, 1]) for (let k = 0; k < 4; k++) {
-    p.box(grain, .0016, .0018, .15 - k * .012, side * .035, -.026 + k * .011, -.294 + k * .003, 0, side * .006, side * .018);
+  receiverProfiles();
+  const p=new Parts(), action=new Parts(), lever=new Parts();
+  const wood=walnutFinish(), blued=mat(0x4b555b,.42,.36), worn=mat(0x838c88,.52,.35);
+  for(const side of [-1,1]){
+    p.add('m1887Receiver',blued,[.12,1,1],[side*.033,0,-.02]);
+    // Curved sideplate outline and carefully positioned action screws.
+    p.add('m1887Receiver',worn,[.016,.84,.92],[side*.039,0,-.014]);
+    p.add('m1887Receiver',blued,[.018,.805,.885],[side*.040,.002,-.014]);
+    for(const [y,z,r] of [[.055,.045,.0045],[-.022,-.107,.004],[.023,-.065,.0032],[.008,.061,.0035]])screw(p,side*.042,y,z,r);
+    p.box(MAT.black,.0015,.003,.052,side*.043,.061,-.078);
+    p.box(worn,.0015,.001,.041,side*.043,.058,-.078);
   }
-  // Cut-down curved grip rather than the rifle's full shoulder stock.
-  p.box(walnut, .05, .06, .13, 0, -.019, .08, -.22);
-  p.box(walnut, .053, .094, .062, 0, -.056, .127, -.47);
-  p.add('sphere', walnut, [.027,.041,.031], [0,-.094,.15], [-.3,0,0]);
-  p.box(MAT.black, .054, .012, .059, 0, -.125, .153, -.35);
-  for (const side of [-1, 1]) {
-    for (let k = 0; k < 4; k++) p.box(grain, .0018, .0015, .065, side * .027, -.04 - k * .013, .116 + k * .006, -.3);
-    p.bead(MAT.brass, side * .031, .018, -.01, .004);
-    p.bead(MAT.edge, side * .031, .016, -.121, .0037);
-    p.box(MAT.black, .002, .013, .047, side * .031, .041, -.075);
-    p.box(MAT.edge, .002, .003, .042, side * .032, .046, -.076);
+  p.box(blued,.061,.028,.214,0,-.034,-.02);
+  p.add('sphere',blued,[.034,.066,.041],[0,.017,.058]);
+  // Deep black top-loading port stays visible as the rolling breech opens.
+  p.box(MAT.black,.058,.012,.12,0,.055,-.036);
+  p.box(worn,.005,.013,.106,-.029,.064,-.044);
+  p.box(worn,.005,.013,.106,.029,.064,-.044);
+  action.add('m1887Breech',blued,[1,1,1],[0,.033,-.014]);
+  action.box(worn,.012,.003,.065,.019,.104,-.043);
+  action.box(MAT.black,.005,.008,.034,-.022,.087,-.054);
+  // Large bore and parallel tube, with a period-correct bead instead of rails.
+  p.tube(blued,.0235,.36,0,.074,-.32);
+  p.tube(worn,.0245,.014,0,.074,-.506);
+  p.tube(MAT.black,.0185,.017,0,.074,-.516);
+  p.tube(blued,.0175,.335,0,.011,-.309);
+  p.tube(worn,.0182,.012,0,.011,-.482);
+  p.bead(MAT.brass,0,.101,-.481,.0037);
+  p.box(blued,.009,.005,.012,0,.097,-.481);
+  for(const z of [-.171,-.414]){
+    p.add('ring',worn,[.025,.026,.032],[0,.073,z]);
+    p.box(blued,.073,.075,.012,0,.035,z);
   }
-  // Hammer and top-loading bolt. The action retracts with the lever cycle.
-  p.box(blued, .016, .029, .019, 0, .075, .029, -.35);
-  p.box(MAT.edge, .026, .006, .018, 0, .09, .036, -.35);
-  action.box(blued, .039, .012, .095, 0, .074, -.048);
-  action.box(MAT.brass, .014, .004, .033, .01, .08, -.06);
-  p.box(MAT.black, .009, .029, .010, 0, -.037, -.024, -.25);
-  // The loop pivots at the receiver's lower front corner.
-  lever.add('ring', blued, [.069,.047,.026], [0,-.061,.065], [0,Math.PI/2,0]);
-  lever.box(blued, .012, .046, .017, 0, -.018, .006, -.24);
-  lever.box(MAT.edge, .014, .008, .069, 0, -.104, .065);
-  p.add('cylinder', MAT.edge, [.008,.067,.008], [0,-.014,-.115], [0,0,Math.PI/2]);
-  ironSights(p, -.525, -.038, .09, .074);
-  for (let k = 0; k < 3; k++) {
-    p.tube(mat(0x963e32, .15, .5), .009, .046, -.04, .009, -.08 - k * .025);
-    p.tube(MAT.brass, .0095, .008, -.04, .009, -.053 - k * .025);
-  }
-  marking(w, p, .0312, .023, -.064, .14);
-  const g = p.build(), loop = lever.build('lever'); loop.position.set(0, -.014, -.115);
-  g.add(loop, action.build('bolt'));
-  g.userData = { muzzle:[0,.052,-.577], sightY:.095, length:.75, dualHip:[.25,-.18,-.47], leverAction:true };
+  // Rounded walnut fore-end, not the squared pump handguard of a modern gun.
+  p.add('sphere',wood,[.038,.035,.135],[0,.009,-.297]);
+  p.box(wood,.068,.045,.208,0,.013,-.297);
+  p.box(worn,.067,.003,.008,0,-.012,-.406);
+  p.box(worn,.065,.003,.008,0,-.012,-.188);
+  // Sawn-off stock with a curved wrist and bird's-head butt.
+  p.add('m1887Grip',wood,[1,1,1]);
+  p.box(blued,.056,.005,.045,0,-.136,.221,-.22);
+  for(const side of [-1,1])screw(p,side*.032,-.048,.163,.004);
+  p.box(blued,.012,.034,.062,0,-.014,.09,-.3);
+  // Exposed hammer, extractor and trigger give the action its old mechanism.
+  p.box(blued,.019,.034,.018,0,.088,.071,-.4);
+  p.box(worn,.026,.006,.021,0,.105,.078,-.4);
+  for(let i=0;i<4;i++)p.box(MAT.black,.024,.002,.0015,0,.108+i*.0004,.07+i*.0035,-.4);
+  p.box(worn,.007,.036,.010,0,-.047,.008,.22);
+  lever.add('ring',blued,[.082,.054,.026],[0,-.059,.079],[0,Math.PI/2,0]);
+  lever.box(blued,.013,.045,.016,0,-.021,.006,-.28);
+  lever.box(worn,.013,.005,.073,0,-.111,.077);
+  p.add('cylinder',worn,[.009,.075,.009],[0,-.018,-.102],[0,0,Math.PI/2]);
+  // Small stamped maker marks suit a historic receiver; no modern tactical plate.
+  const engraving={...w,name:'MODEL 1887  ·  12 GA'};marking(engraving,p,.0431,.026,-.013,.10);
+  const g=p.build(),loop=lever.build('lever'),breech=action.build('bolt');
+  loop.position.set(0,-.018,-.102);breech.position.set(0,.015,.025);breech.userData.rest=[0,.015,.025];
+  g.add(loop,breech);
+  g.userData={muzzle:[0,.074,-.526],sightY:.105,length:.78,dualHip:[.25,-.16,-.56],leverAction:true,rollingBreech:true};
   return g;
 }
 
@@ -333,8 +478,8 @@ function equipment(w) {
 }
 
 export function gunModel(weapon) {
-  const w = weaponInfo(weapon), key = `${w.id}/${w.cls}/${w.zoom || 0}`;
-  if (!templates.has(key)) templates.set(key, w.id === 'twin_mp7' ? mp7(w) : w.id === 'twin_lever' ? leverShotgun(w) : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
+  const w = withOptic(weapon), key = weaponModelKey(w);
+  if (!templates.has(key)) templates.set(key, w.id === 'titan' ? buildTitan(w, { Parts, MAT, mat, rails, marking }) : w.id === 'twin_mp7' ? mp7(w) : w.id === 'twin_lever' ? leverShotgun(w) : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
   return templates.get(key).clone(true);
 }
 

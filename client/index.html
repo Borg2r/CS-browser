@@ -27,7 +27,24 @@
   <div id="progress" class="hidden"><div id="progressBar"></div><span id="progressLabel"></span></div>
   <div id="crosshair"><i></i><i></i><i></i><i></i></div>
   <div id="hitmarker"></div>
-  <div id="scope" class="hidden"></div>
+  <div id="optic-dot" class="hidden" aria-hidden="true"></div>
+  <div id="scope" class="hidden" aria-hidden="true">
+    <svg class="scope-reticle" viewBox="0 0 200 200">
+      <g class="scope-mildot" fill="#101516" stroke="#101516" stroke-width=".22">
+        <path d="M0 100H200M100 0V200" fill="none"/>
+        <path d="M0 100H58M142 100H200M100 142V200" stroke-width="1.6"/>
+        <circle cx="100" cy="100" r=".35"/>
+        <circle cx="76" cy="100" r=".7"/><circle cx="88" cy="100" r=".7"/><circle cx="112" cy="100" r=".7"/><circle cx="124" cy="100" r=".7"/>
+        <circle cx="100" cy="76" r=".7"/><circle cx="100" cy="88" r=".7"/><circle cx="100" cy="112" r=".7"/><circle cx="100" cy="124" r=".7"/>
+        <path d="M95 136H105M93 148H107M91 160H109" fill="none"/>
+      </g>
+      <g class="scope-acog" fill="none" stroke="#13191a" stroke-width=".6">
+        <path d="M100 106V160M94 116H106M92 126H108M90 136H110M88 146H112M64 100H90M110 100H136"/>
+        <path d="M95 105L100 100L105 105" stroke="#ee4434" stroke-width="1.2"/>
+      </g>
+    </svg>
+    <span id="scope-zoom" class="scope-readout"></span>
+  </div>
   <div id="vitals"><span id="hp">100</span><small>HP</small><span id="armor">0</span><small id="armorLabel">ARMOR</small></div>
   <div id="money">$800</div>
   <div id="ammo"><span id="clip">0</span><small id="reserve">/ 0</small><div id="wname"></div><div id="weapon-mode"></div><div id="carry"></div></div>

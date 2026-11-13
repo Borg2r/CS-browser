@@ -169,7 +169,9 @@ fn shop(g: &mut Game, i: usize) {
     let roll = g.rng.f();
     let mut list: Vec<&str> = Vec::new();
     if !has_prim {
-        if money >= 5200 && roll < 0.12 {
+        if money >= 7200 && roll < 0.06 {
+            list.push("titan");
+        } else if money >= 5200 && roll < 0.12 {
             list.push("longbow");
         } else if money >= 3300 && roll < 0.24 {
             list.push(["twin_mp7", "twin_lever"][g.rng.below(2)]);

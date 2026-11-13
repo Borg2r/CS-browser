@@ -117,12 +117,19 @@ pub struct Gun {
     pub reserve: u16,
     /// Loaded rounds in the left gun. Right rounds = ammo - left_ammo.
     pub left_ammo: u16,
+    /// Installed attachment: 0 none, 1 red dot, 2 ACOG.
+    pub optic: u8,
 }
 
 impl Gun {
     pub fn new(w: usize) -> Gun {
         let def = &WEAPONS[w];
-        Gun { w, ammo: def.mag, reserve: def.reserve, left_ammo: if def.dual { def.mag / 2 } else { 0 } }
+        Gun { w, ammo: def.mag, reserve: def.reserve, left_ammo: if def.dual { def.mag / 2 } else { 0 }, optic: 0 }
+    }
+
+    pub fn effective_zoom(&self) -> f32 {
+        OPTICS.iter().find(|o| o.index == self.optic)
+            .map(|o| o.zoom).unwrap_or(WEAPONS[self.w].zoom)
     }
 
     fn ammo_hand(&self, hand: usize) -> u16 {
@@ -189,6 +196,8 @@ pub struct Player {
     pub kit: bool,
     pub slot: u8,
     pub cooldown: f32,
+    /// Actual bolt cycle only; equip delays must not prevent aiming in freeze time.
+    bolt_t: f32,
     hand_cooldown: [f32; 2],
     hand_shots: [f32; 2],
     hand_since_shot: [f32; 2],
@@ -216,7 +225,7 @@ impl Player {
             yaw: 0.0, pitch: 0.0, buttons: 0, prev_buttons: 0,
             hp: 0, armor: 0, helmet: false, money: START_MONEY, kills: 0, deaths: 0,
             prim: None, sec: None, nades: [0; 3], has_bomb: false, kit: false,
-            slot: 2, cooldown: 0.0, hand_cooldown: [0.0; 2], hand_shots: [0.0; 2], hand_since_shot: [9.0; 2], reload_t: 0.0, shots: 0.0, since_shot: 9.0, scoped: 0,
+            slot: 2, cooldown: 0.0, bolt_t: 0.0, hand_cooldown: [0.0; 2], hand_shots: [0.0; 2], hand_since_shot: [9.0; 2], reload_t: 0.0, shots: 0.0, since_shot: 9.0, scoped: 0,
             plant_t: 0.0, defuse_t: 0.0, flash_t: 0.0,
             cmds: VecDeque::new(), ack: 0, budget: 0.0, interp_time: 0.0,
             hist: VecDeque::new(),
@@ -276,12 +285,13 @@ impl Player {
     fn update_aim(&mut self) {
         let def = &WEAPONS[self.cur_weapon()];
         self.scoped = u8::from(self.alive && def.ads && !def.dual && self.buttons & B_FIRE2 != 0
-            && self.reload_t <= 0.0 && self.plant_t <= 0.0 && self.defuse_t <= 0.0);
+            && self.reload_t <= 0.0 && self.plant_t <= 0.0 && self.defuse_t <= 0.0
+            && (!def.bolt_action || self.bolt_t <= 0.0));
     }
 
     pub fn max_speed(&self) -> f32 {
         let w = &WEAPONS[self.cur_weapon()];
-        if self.scoped > 0 && w.zoom > 0.0 { w.speed * 0.6 } else { w.speed }
+        if self.scoped > 0 && self.gun().is_some_and(|g| g.effective_zoom() > 0.0) { w.speed * 0.6 } else { w.speed }
     }
 
     pub fn xz(&self) -> [f32; 2] {
@@ -295,6 +305,7 @@ pub struct Item {
     pub ammo: u16,
     pub reserve: u16,
     pub left_ammo: u16,
+    pub optic: u8,
     pub pos: V3,
     no_pick: (u32, f64),
 }
@@ -693,7 +704,9 @@ impl Game {
             p.helmet = false;
         }
         for g in [&mut p.prim, &mut p.sec].into_iter().flatten() {
+            let optic = g.optic;
             *g = Gun::new(g.w);
+            g.optic = optic;
         }
         if p.sec.is_none() {
             p.sec = Some(Gun::new(default_pistol));
@@ -713,6 +726,7 @@ impl Game {
         p.reload_t = 0.0;
         p.shots = 0.0;
         p.scoped = 0;
+        p.bolt_t = 0.0;
         p.plant_t = 0.0;
         p.defuse_t = 0.0;
         p.flash_t = 0.0;
@@ -806,6 +820,7 @@ impl Game {
         p.slot = slot;
         p.reload_t = 0.0;
         p.scoped = 0;
+        p.bolt_t = 0.0;
         p.plant_t = 0.0;
         p.shots = 0.0;
         p.hand_cooldown = [0.0; 2];
@@ -818,6 +833,19 @@ impl Game {
             return false;
         }
         let p = &mut self.players[i];
+        if let Some(optic) = OPTICS.iter().find(|optic| optic.id == item) {
+            let Some(gun) = p.gun() else { return false };
+            if !WEAPONS[gun.w].accepts_optic(optic.index) || gun.optic == optic.index || p.money < optic.price {
+                return false;
+            }
+            p.gun_mut().unwrap().optic = optic.index;
+            p.money -= optic.price;
+            p.reload_t = 0.0;
+            p.scoped = 0;
+            p.bolt_t = 0.0;
+            p.cooldown = p.cooldown.max(0.35);
+            return true;
+        }
         let mut dropped: Option<Gun> = None;
         match item {
             "vest" => {
@@ -866,6 +894,7 @@ impl Game {
                         p.slot = s;
                         p.reload_t = 0.0;
                         p.scoped = 0;
+                        p.bolt_t = 0.0;
                         p.shots = 0.0;
                         p.hand_cooldown = [0.0; 2];
                         p.hand_shots = [0.0; 2];
@@ -887,7 +916,7 @@ impl Game {
         let y = o[1] - ray_world(self.map, &o, &[0.0, -1.0, 0.0], 50.0);
         let id = self.id();
         self.items.push(Item {
-            id, w: gun.w, ammo: gun.ammo, reserve: gun.reserve, left_ammo: gun.left_ammo,
+            id, w: gun.w, ammo: gun.ammo, reserve: gun.reserve, left_ammo: gun.left_ammo, optic: gun.optic,
             pos: [pos[0], y, pos[2]],
             no_pick: (by, self.time + 1.5),
         });
@@ -914,6 +943,7 @@ impl Game {
         p.slot = p.best_slot();
         p.reload_t = 0.0;
         p.scoped = 0;
+        p.bolt_t = 0.0;
         p.plant_t = 0.0;
         p.shots = 0.0;
         p.since_shot = 9.0;
@@ -945,7 +975,7 @@ impl Game {
                 };
                 if near && !blocked && wants {
                     let it = self.items.swap_remove(k);
-                    let g = Gun { w: it.w, ammo: it.ammo, reserve: it.reserve, left_ammo: it.left_ammo };
+                    let g = Gun { w: it.w, ammo: it.ammo, reserve: it.reserve, left_ammo: it.left_ammo, optic: it.optic };
                     match slot {
                         6 => p.has_bomb = true,
                         0 => {
@@ -954,6 +984,7 @@ impl Game {
                                 p.slot = 0;
                                 p.reload_t = 0.0;
                                 p.scoped = 0;
+                                p.bolt_t = 0.0;
                                 p.shots = 0.0;
                                 p.since_shot = 9.0;
                                 p.hand_cooldown = [0.0; 2];
@@ -1005,7 +1036,7 @@ impl Game {
     }
 
     fn shoot(&mut self, i: usize, hand: usize) {
-        let (w, origin, yaw, pitch, team, id, shots, speed, ground, crouch, scoped, at) = {
+        let (w, origin, yaw, pitch, team, id, shots, speed, ground, crouch, scoped, zoom, at) = {
             let p = &mut self.players[i];
             let w = p.cur_weapon();
             let Some(g) = p.gun_mut() else { return };
@@ -1019,6 +1050,7 @@ impl Game {
             } else {
                 p.shots += 1.0;
                 p.cooldown = def.interval;
+                if def.bolt_action { p.bolt_t = def.interval; }
             }
             p.since_shot = 0.0;
             let at = if p.conn.is_some() && p.interp_time > 0.0 {
@@ -1027,13 +1059,13 @@ impl Game {
                 self.time
             };
             (w, p.st.eye(), p.yaw, p.pitch, p.team, p.id, shots,
-             p.st.vel[0].hypot(p.st.vel[2]), p.st.ground, p.st.crouch, p.scoped > 0, at)
+             p.st.vel[0].hypot(p.st.vel[2]), p.st.ground, p.st.crouch, p.scoped > 0, p.gun().unwrap().effective_zoom(), at)
         };
         let def = &WEAPONS[w];
         let mv = (speed / def.speed).min(1.0);
         let light = matches!(def.class, C_PISTOL | C_SMG | C_SHOTGUN);
         let mut spread = def.spread + (shots * def.spread_inc).min(def.spread_max);
-        if def.zoom >= 4.0 && !scoped {
+        if def.class == C_SNIPER && zoom >= 4.0 && !scoped {
             spread += 0.08;
         }
         spread = spread * (1.0 + 1.5 * mv) + if light { 0.012 } else { 0.035 } * mv * mv;
@@ -1043,7 +1075,7 @@ impl Game {
         if crouch {
             spread *= 0.75;
         }
-        if scoped && def.ads { spread *= 0.62; }
+        if scoped && def.ads && zoom > 0.0 { spread *= 0.62; }
         let (side, climb) = recoil_offset(def.recoil, shots);
         // How much solid material (metres) a round can punch through.
         let power = match def.class {
@@ -1088,10 +1120,11 @@ impl Game {
             if let Some((j, zone)) = hit {
                 let mult = [4.0, 1.0, 0.75][zone as usize];
                 let through = if best_t > wall_t { pen_mult } else { 1.0 };
-                let dmg = def.dmg * def.falloff.powf(best_t / 10.0) * mult * through;
+                let dmg = def.damage_at(best_t) * mult * through;
                 self.damage(j, Some(i), dmg, w, zone);
             }
         }
+        if def.bolt_action { self.players[i].scoped = 0; }
         self.events.push(format!(
             "{{\"t\":\"shot\",\"id\":{},\"w\":{},\"hand\":{},\"o\":[{:.2},{:.2},{:.2}],\"h\":[{}]}}",
             id, w, hand, origin[0], origin[1], origin[2], ends
@@ -1300,6 +1333,9 @@ impl Game {
         let map = self.map;
         let p = &mut self.players[i];
         p.cooldown = (p.cooldown - dt).max(0.0);
+        let cycling = p.bolt_t > 0.0;
+        p.bolt_t = (p.bolt_t - dt).max(0.0);
+        if cycling && p.bolt_t == 0.0 { p.shots = 0.0; }
         p.flash_t = (p.flash_t - dt).max(0.0);
         p.since_shot += dt;
         let w = p.cur_weapon();
@@ -1585,7 +1621,8 @@ impl Game {
                 json!({"id": w.id, "name": w.name, "cls": w.class, "price": w.price, "mag": w.mag,
                        "interval": w.interval, "auto": w.auto, "speed": w.speed, "zoom": w.zoom,
                        "team": w.team, "recoil": w.recoil, "slot": slot_of(w.class), "reload": w.reload,
-                       "dmg": w.dmg, "pellets": w.pellets, "dual": w.dual, "ads": w.ads})
+                       "dmg": w.dmg, "pellets": w.pellets, "dual": w.dual, "ads": w.ads,
+                       "boltAction": w.bolt_action, "optics": OPTICS.iter().filter(|o| w.accepts_optic(o.index)).map(|o| o.index).collect::<Vec<_>>()})
             })
             .collect();
         let metadata = |id: MapId| json!({
@@ -1598,8 +1635,9 @@ impl Game {
         map["sites"] = json!(sites);
         map["w"] = json!(self.map.w);
         map["h"] = json!(self.map.h);
+        let optics: Vec<_> = OPTICS.iter().map(|o| json!({"index": o.index, "id": o.id, "name": o.name, "price": o.price, "zoom": o.zoom})).collect();
         json!({"t": "hello", "map": map, "maps": maps,
-               "weapons": weapons, "win": WIN_ROUNDS, "teamSize": self.team_size})
+               "weapons": weapons, "optics": optics, "win": WIN_ROUNDS, "teamSize": self.team_size})
         .to_string()
     }
 
@@ -1676,14 +1714,14 @@ impl Game {
                 | ((p.scoped > 0) as u8) << 2
                 | ((p.defuse_t > 0.0) as u8) << 3
                 | ((p.plant_t > 0.0) as u8) << 4;
-            let _ = write!(c, "{}[{},{},{},{:.2},{:.2},{:.2},{:.3},{:.3},{},{},{}]",
+            let _ = write!(c, "{}[{},{},{},{:.2},{:.2},{:.2},{:.3},{:.3},{},{},{},{}]",
                 if k > 0 { "," } else { "" }, p.id, p.team, p.alive as u8,
-                p.st.pos[0], p.st.pos[1], p.st.pos[2], p.yaw, p.pitch, p.hp.max(0), p.cur_weapon(), flags);
+                p.st.pos[0], p.st.pos[1], p.st.pos[2], p.yaw, p.pitch, p.hp.max(0), p.cur_weapon(), flags, p.gun().map(|g| g.optic).unwrap_or(0));
         }
         c.push_str("],\"it\":[");
         for (k, it) in self.items.iter().enumerate() {
-            let _ = write!(c, "{}[{},{},{:.2},{:.2},{:.2}]", if k > 0 { "," } else { "" },
-                it.id, it.w, it.pos[0], it.pos[1], it.pos[2]);
+            let _ = write!(c, "{}[{},{},{:.2},{:.2},{:.2},{}]", if k > 0 { "," } else { "" },
+                it.id, it.w, it.pos[0], it.pos[1], it.pos[2], it.optic);
         }
         c.push_str("],\"nd\":[");
         for (k, n) in self.nades.iter().enumerate() {
@@ -1709,7 +1747,7 @@ impl Game {
                     let g = p.gun();
                     let w = |g: &Option<Gun>| g.map(|g| g.w as i32).unwrap_or(-1);
                     let _ = write!(s,
-                        ",\"me\":{{\"st\":[{},{},{},{},{},{},{},{},{}],\"ack\":{},\"hp\":{},\"ar\":{},\"he\":{},\"mo\":{},\"sl\":{},\"w\":{},\"am\":{},\"amL\":{},\"amR\":{},\"rs\":{},\"pr\":{},\"se\":{},\"nd\":[{},{},{}],\"bm\":{},\"kit\":{},\"rl\":{:.2},\"sc\":{},\"pl\":{:.2},\"df\":{:.2},\"cb\":{}}}}}",
+                        ",\"me\":{{\"st\":[{},{},{},{},{},{},{},{},{}],\"ack\":{},\"hp\":{},\"ar\":{},\"he\":{},\"mo\":{},\"sl\":{},\"w\":{},\"am\":{},\"amL\":{},\"amR\":{},\"rs\":{},\"pr\":{},\"se\":{},\"nd\":[{},{},{}],\"bm\":{},\"kit\":{},\"rl\":{:.2},\"sc\":{},\"pl\":{:.2},\"df\":{:.2},\"cb\":{},\"optic\":{},\"prOptic\":{},\"seOptic\":{},\"zoom\":{}}}}}",
                         st[0], st[1], st[2], st[3], st[4], st[5], st[6], st[7], st[8],
                         p.ack, p.hp.max(0), p.armor, p.helmet, p.money, p.slot, p.cur_weapon(),
                         g.map(|g| g.ammo).unwrap_or(0), g.map(|g| g.ammo_hand(0)).unwrap_or(0),
@@ -1717,7 +1755,9 @@ impl Game {
                         w(&p.prim), w(&p.sec), p.nades[0], p.nades[1], p.nades[2],
                         p.has_bomb, p.kit, p.reload_t, p.scoped,
                         p.plant_t / PLANT_TIME, p.defuse_t / if p.kit { 5.0 } else { 10.0 },
-                        self.can_buy(p));
+                        self.can_buy(p), g.map(|g| g.optic).unwrap_or(0),
+                        p.prim.map(|g| g.optic).unwrap_or(0), p.sec.map(|g| g.optic).unwrap_or(0),
+                        g.map(|g| g.effective_zoom()).unwrap_or(0.0));
                 }
             }
             self.send(*conn, s);
@@ -2052,6 +2092,7 @@ mod tests {
         let p = &mut g.players[0];
         p.bot = None;
         p.alive = true;
+        p.has_bomb = false;
         p.hp = 100;
         let w = by_id(weapon).unwrap();
         p.slot = slot_of(WEAPONS[w].class);
@@ -2075,6 +2116,232 @@ mod tests {
             let event: serde_json::Value = serde_json::from_str(event).unwrap();
             (event["t"] == "shot").then(|| event["hand"].as_u64().unwrap())
         }).collect()
+    }
+
+    #[test]
+    fn optics_purchases_obey_held_weapon_compatibility_budget_and_replacement_prices() {
+        for def in &WEAPONS {
+            for optic in &OPTICS {
+                let mut g = weapon_game(def.id);
+                g.players[0].money = 5000;
+                let allowed = !def.dual && match def.class {
+                    C_PISTOL => optic.index == 1,
+                    C_SHOTGUN | C_SMG | C_RIFLE | C_LMG => true,
+                    _ => false,
+                };
+                assert_eq!(g.buy(0, optic.id), allowed, "{} + {}", def.id, optic.id);
+                assert_eq!(g.players[0].money, 5000 - if allowed { optic.price } else { 0 });
+                if allowed {
+                    assert_eq!(g.players[0].gun().unwrap().optic, optic.index);
+                    assert_eq!(g.players[0].gun().unwrap().effective_zoom(), optic.zoom);
+                    assert!(!g.buy(0, optic.id), "an already-installed optic cannot be bought again");
+                    assert_eq!(g.players[0].money, 5000 - optic.price);
+                }
+            }
+        }
+        for team in [ATK, DEF] {
+            let mut g = weapon_game("sentinel");
+            let p = &mut g.players[0];
+            p.team = team;
+            let point = g.map.spawns[(team - 1) as usize][0];
+            p.st.pos = [point[0], 0.01, point[1]];
+            p.money = 499;
+            assert!(!g.buy(0, "red_dot"));
+            assert_eq!(g.players[0].gun().unwrap().optic, 0);
+            assert_eq!(g.players[0].money, 499);
+            g.players[0].money = 3000;
+            assert!(g.buy(0, "red_dot"));
+            assert!(g.buy(0, "acog"));
+            assert_eq!(g.players[0].money, 1300, "replacement charges the full price, without a refund");
+            assert_eq!(g.players[0].gun().unwrap().optic, 2);
+            g.players[0].alive = false;
+            assert!(!g.buy(0, "red_dot"));
+            g.players[0].alive = true;
+            g.players[0].st.pos = [0.0, 0.01, 0.0];
+            assert!(!g.buy(0, "red_dot"), "installation is restricted to the buy zone");
+            g.players[0].st.pos = [point[0], 0.01, point[1]];
+            g.live_elapsed = BUY_TIME + 1.0;
+            assert!(!g.buy(0, "red_dot"), "installation respects the buy timer");
+        }
+    }
+
+    #[test]
+    fn optics_follow_the_gun_through_pickup_death_and_surviving_rounds() {
+        let mut g = weapon_game("sentinel");
+        g.players[0].money = 6000;
+        g.players[0].sec = Some(Gun::new(PISTOL_ATK));
+        assert!(g.buy(0, "acog"));
+        g.select_slot(0, 1);
+        assert!(g.buy(0, "red_dot"));
+        g.select_slot(0, 0);
+        g.players[0].gun_mut().unwrap().ammo = 7;
+        g.players[0].gun_mut().unwrap().reserve = 13;
+        g.drop_active(0);
+        assert_eq!(g.items[0].optic, 2);
+        g.players[0].st.pos = g.items[0].pos;
+        g.time += 2.0;
+        g.pickups();
+        let gun = g.players[0].gun().unwrap();
+        assert_eq!((gun.optic, gun.ammo, gun.reserve), (2, 7, 13));
+        assert_eq!(g.players[0].sec.unwrap().optic, 1);
+        g.spawn(0, 0);
+        assert_eq!(g.players[0].prim.unwrap().optic, 2, "survivors keep their attachments when ammo refills");
+        assert_eq!(g.players[0].sec.unwrap().optic, 1);
+        assert_eq!(g.players[0].prim.unwrap().ammo, WEAPONS[by_id("sentinel").unwrap()].mag);
+        g.kill(0, None, KNIFE, false);
+        assert_eq!(g.items.len(), 1);
+        assert_eq!(g.items[0].optic, 2);
+        let mut collector = Player::new(999, "Collector".into(), DEF, None, None);
+        collector.alive = true; collector.hp = 100; collector.st.pos = g.items[0].pos;
+        g.players.push(collector);
+        g.pickups();
+        assert_eq!(g.players[1].prim.unwrap().optic, 2, "enemy-dropped sights transfer with the gun");
+        assert!(g.items.is_empty());
+        g.spawn(0, 0);
+        assert!(g.players[0].prim.is_none());
+        assert_eq!(g.players[0].sec.unwrap().optic, 0, "dying does not grant free attachments next round");
+    }
+
+    #[test]
+    fn optics_are_replicated_per_weapon_and_change_effective_aim_zoom() {
+        let mut g = weapon_game("sabre");
+        g.players[0].money = 6000;
+        g.players[0].sec = Some(Gun::new(PISTOL_ATK));
+        let original_ammo = g.players[0].gun().unwrap().ammo;
+        assert!(g.buy(0, "acog"));
+        input(&mut g, B_FIRE2, 0.4);
+        assert_eq!(g.players[0].scoped, 1);
+        assert_eq!(g.players[0].gun().unwrap().ammo, original_ammo);
+        assert_eq!(g.players[0].gun().unwrap().effective_zoom(), 4.0);
+        assert_eq!(g.players[0].max_speed(), WEAPONS[by_id("sabre").unwrap()].speed * 0.6);
+        g.select_slot(0, 1);
+        assert!(g.buy(0, "red_dot"));
+        g.select_slot(0, 0);
+        let dropped = g.players[0].sec.unwrap();
+        g.drop_item(dropped, g.players[0].st.pos, 0);
+        let (tx, mut rx) = mpsc::channel(64);
+        g.conns.insert(1, tx); g.conn_player.insert(1, g.players[0].id); g.tick_n = 2;
+        g.broadcast();
+        let snap = messages(&mut rx).into_iter().find(|m| m["t"] == "s").unwrap();
+        assert_eq!(snap["me"]["optic"], 2);
+        assert_eq!(snap["me"]["prOptic"], 2);
+        assert_eq!(snap["me"]["seOptic"], 1);
+        assert_eq!(snap["me"]["zoom"], 4.0);
+        assert_eq!(snap["pl"][0][11], 2);
+        assert_eq!(snap["it"][0][5], 1);
+        let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
+        assert_eq!(hello["optics"], json!([
+            {"index":1,"id":"red_dot","name":"Red Dot","price":500,"zoom":1.5},
+            {"index":2,"id":"acog","name":"ACOG","price":1200,"zoom":4.0},
+        ]));
+        for (id, allowed) in [("kestrel", vec![1]), ("sabre", vec![1, 2]), ("titan", vec![]), ("twin_mp7", vec![])] {
+            let weapon = hello["weapons"].as_array().unwrap().iter().find(|w| w["id"] == id).unwrap();
+            assert_eq!(weapon["optics"], json!(allowed));
+        }
+        assert!(g.buy(0, "red_dot"));
+        assert_eq!(g.players[0].gun().unwrap().effective_zoom(), 1.5, "a replacement overrides Sabre's built-in2x optic");
+    }
+
+    fn titan_target(distance: f32, height: f32, cover: Option<f32>) -> Game {
+        let mut g = weapon_game("titan");
+        let mut arena = Map::build();
+        arena.boxes.clear();
+        arena.boxes.push(sim::map::Aabb { min: [-300.0, -2.0, -300.0], max: [300.0, 0.0, 300.0], mat: 0, var: 0 });
+        if let Some(thickness) = cover {
+            arena.boxes.push(sim::map::Aabb {
+                min: [-3.0, 0.0, -distance / 2.0 - thickness / 2.0],
+                max: [3.0, 3.0, -distance / 2.0 + thickness / 2.0], mat: 1, var: 0,
+            });
+        }
+        g.map = Box::leak(Box::new(arena));
+        g.players[0].team = ATK;
+        g.players[0].st = PState { pos: [0.0, 0.01, 0.0], ground: true, ..PState::default() };
+        g.players[0].yaw = 0.0;
+        g.players[0].pitch = (height - EYE_STAND).atan2(distance);
+        let mut target = Player::new(999, "Armored target".into(), DEF, None, None);
+        target.alive = true; target.hp = 100; target.armor = 100; target.helmet = true;
+        target.st = PState { pos: [0.0, 0.01, -distance], ground: true, ..PState::default() };
+        g.players.push(target);
+        g
+    }
+
+    #[test]
+    fn titan_actual_hits_kill_close_torsos_and_all_heads_including_penetrated_helmet_hits() {
+        for distance in [5.0, 20.0, 35.0, 50.0, 120.0, 240.0] {
+            let mut head = titan_target(distance, 1.6, None);
+            input(&mut head, B_FIRE | B_FIRE2, TICK);
+            assert!(!head.players[1].alive, "helmet headshot at {distance}m must be lethal");
+            let mut covered_head = titan_target(distance, 1.6, Some(2.59));
+            input(&mut covered_head, B_FIRE | B_FIRE2, TICK);
+            assert!(!covered_head.players[1].alive, "penetrated helmet headshot at {distance}m must be lethal");
+            let mut body = titan_target(distance, 1.1, None);
+            input(&mut body, B_FIRE | B_FIRE2, TICK);
+            if distance <= 20.0 {
+                assert!(!body.players[1].alive, "close armored torso hit must be lethal");
+            } else if distance >= 50.0 {
+                assert!(body.players[1].alive);
+                assert_eq!(body.players[1].hp, 6, "far armored torso hit should deal94 at {distance}m");
+            } else {
+                assert!(body.players[1].hp < 6, "mid-range torso damage must interpolate smoothly");
+            }
+        }
+    }
+
+    #[test]
+    fn titan_leg_hits_cover_attenuation_and_solid_walls_keep_normal_rules() {
+        let mut legs = titan_target(10.0, 0.4, None);
+        input(&mut legs, B_FIRE | B_FIRE2, TICK);
+        assert!(legs.players[1].alive && legs.players[1].hp >= 17);
+        let mut through_cover = titan_target(10.0, 1.1, Some(1.0));
+        input(&mut through_cover, B_FIRE | B_FIRE2, TICK);
+        assert!(through_cover.players[1].alive && through_cover.players[1].hp > 10 && through_cover.players[1].hp < 100,
+                "penetrated body damage should be reduced normally");
+        let mut blocked = titan_target(10.0, 1.6, Some(2.7));
+        input(&mut blocked, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(blocked.players[1].hp, 100, "the new rifle must not penetrate beyond the existing2.6m limit");
+    }
+
+    #[test]
+    fn titan_stationary_aimed_shots_settle_after_each_completed_bolt_cycle() {
+        let mut g = titan_target(240.0, 1.6, None);
+        for shot in 0..5 {
+            g.players[1].alive = true; g.players[1].hp = 100;
+            if shot > 0 { input(&mut g, B_FIRE2, 2.3 + TICK); }
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert!(!g.players[1].alive, "settled shot {shot} must hit the aimed head at long range");
+            assert_eq!(g.players[0].gun().unwrap().ammo, 4 - shot);
+        }
+    }
+
+    #[test]
+    fn titan_bolt_cycle_is_slow_and_lowers_the_scope_until_ready() {
+        let mut g = weapon_game("titan");
+        assert_eq!(g.players[0].gun().unwrap().effective_zoom(), 12.0);
+        assert_eq!(g.players[0].max_speed(), 4.5);
+        input(&mut g, B_FIRE2, TICK);
+        assert_eq!(g.players[0].scoped, 1);
+        assert!((g.players[0].max_speed() - 2.7).abs() < 0.001);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 4);
+        assert_eq!(g.players[0].scoped, 0);
+        g.select_slot(0, 0);
+        assert!(g.players[0].bolt_t > 2.2, "selecting the already-held slot must not skip the bolt cycle");
+        for _ in 0..100 {
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].scoped, 0);
+            assert_eq!(g.players[0].gun().unwrap().ammo, 4);
+        }
+        input(&mut g, B_FIRE2, TICK);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 4, "repressing cannot skip the bolt cycle");
+        input(&mut g, B_FIRE2, 1.0);
+        assert_eq!(g.players[0].scoped, 1);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 3);
+        let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
+        let titan = &hello["weapons"][31];
+        assert_eq!(titan["id"], "titan"); assert_eq!(titan["boltAction"], true);
+        assert_eq!(titan["zoom"], 12.0); assert_eq!(titan["interval"], json!(2.3_f32));
     }
 
     #[test]
@@ -2413,8 +2680,9 @@ mod tests {
 
     #[test]
     fn freeze_allows_aiming_but_neither_weapon_fires() {
-        for id in ["kestrel", "twin_kestrel"] {
+        for id in ["kestrel", "twin_kestrel", "titan"] {
             let mut g = weapon_game(id);
+            g.players[0].cooldown = 0.35;
             g.phase = Phase::Freeze;
             g.phase_t = 6.0;
             let (tx, _rx) = mpsc::channel(16);
@@ -2423,7 +2691,7 @@ mod tests {
             let ammo = p.gun().unwrap().ammo;
             p.cmds.push_back(Cmd { seq: 1, buttons: B_FIRE | B_FIRE2, yaw: 0.0, pitch: 0.0, dt: TICK, it: 0.0 });
             g.tick();
-            assert_eq!(g.players[0].scoped, u8::from(id == "kestrel"));
+            assert_eq!(g.players[0].scoped, u8::from(id != "twin_kestrel"));
             assert_eq!(g.players[0].gun().unwrap().ammo, ammo);
             assert!(shot_hands(&g).is_empty());
         }
@@ -2434,7 +2702,7 @@ mod tests {
         let mut g = weapon_game("twin_kestrel");
         let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
         let definitions = hello["weapons"].as_array().unwrap();
-        assert_eq!(definitions.len(), 31);
+        assert_eq!(definitions.len(), 32);
         for (id, class, capacity, pellets, automatic) in [("twin_mp7", C_SMG, 80, 1, true), ("twin_lever", C_SHOTGUN, 10, 7, false)] {
             let def = definitions.iter().find(|w| w["id"] == id).unwrap();
             assert_eq!(def["cls"], class); assert_eq!(def["slot"], 0); assert_eq!(def["team"], 0);

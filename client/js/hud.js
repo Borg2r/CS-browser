@@ -22,14 +22,15 @@ export class Hud {
   resetEffects() {
     this.centerT = this.hitT = this.dmg = this.flashT = 0; this.flashDur = 1;
     for (const id of ['hitmarker', 'damage', 'flash']) $(id).style.opacity = 0;
+    for (const id of ['scope', 'optic-dot']) $(id).classList.add('hidden');
     $('center').replaceChildren(); $('killfeed').replaceChildren();
     this.buyMenu.pending = null; this.buyMenu.notice = ''; this.buyMenu.cache = '';
   }
 
   init(hello) {
     this.resetEffects();
-    this.weapons = hello.weapons; this.map = hello.map;
-    this.buyMenu.init(hello.weapons);
+    this.weapons = hello.weapons; this.map = hello.map; this.optics = hello.optics || [];
+    this.buyMenu.init(hello.weapons, hello.optics);
     // Static radar background.
     const c = document.createElement('canvas'); c.width = 200; c.height = 186;
     const g = c.getContext('2d'), s = Math.min(192 / (hello.map.w * 2), 178 / (hello.map.h * 2));
@@ -164,7 +165,10 @@ export class Hud {
     for (const id of ['vitals', 'ammo', 'money']) $(id).style.visibility = show ? 'visible' : 'hidden';
     $('crosshair').style.display = show && !s.aiming && !s.sniper ? '' : 'none';
     $('crosshair').style.setProperty('--gap', s.gap.toFixed(1) + 'px');
-    $('scope').classList.toggle('hidden', !(show && s.scoped));
+    $('scope').classList.toggle('hidden', !s.scoped);
+    $('scope').dataset.kind = s.viewWeapon?.optic === 2 ? 'acog' : 'precision';
+    $('scope-zoom').textContent = `${s.viewWeapon?.zoom || 1}× · ${s.viewWeapon?.optic === 2 ? 'ACOG' : 'PRECISION OPTIC'}`;
+    $('optic-dot').classList.toggle('hidden', !s.opticDot);
     $('spec').classList.toggle('hidden', show || !s.spec); $('spec').textContent = s.spec || '';
     $('hint').textContent = s.hint || '';
     $('progress').classList.toggle('hidden', !s.progress);
@@ -180,7 +184,9 @@ export class Hud {
     $('clip').textContent = w.dual ? `${me.amL ?? 0} | ${me.amR ?? 0}` : gun ? me.am : w.slot >= 3 && w.slot <= 5 ? me.nd[w.slot - 3] : '';
     $('reserve').textContent = gun ? '/ ' + me.rs : '';
     $('wname').textContent = w.name + (me.rl > 0 ? ' — reloading' : '');
-    $('weapon-mode').textContent = w.dual ? 'LMB: LEFT  ·  RMB: RIGHT' : w.ads ? 'HOLD RMB TO AIM' : w.cls === 0 ? 'LMB: SLASH  ·  RMB: STAB' : '';
+    const optic = this.optics?.find(o => o.index === me.optic);
+    const aimLabel = optic ? `${optic.name.toUpperCase()} ${optic.zoom}× · HOLD RMB` : w.zoom >= 4 ? `${w.zoom}× SCOPE · HOLD RMB` : 'HOLD RMB TO AIM';
+    $('weapon-mode').textContent = w.dual ? 'LMB: LEFT  ·  RMB: RIGHT' : w.ads ? aimLabel : w.cls === 0 ? 'LMB: SLASH  ·  RMB: STAB' : '';
     $('carry').textContent = [me.bm ? 'CHARGE [5]' : '', me.kit ? 'DEFUSE KIT' : '',
       me.nd[0] ? 'FRAG' : '', me.nd[1] ? `FLASH×${me.nd[1]}` : '', me.nd[2] ? 'SMOKE' : ''].filter(Boolean).join(' · ');
   }

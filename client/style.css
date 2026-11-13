@@ -83,14 +83,17 @@ button:focus-visible, select:focus-visible { outline: 2px solid #e5c38a; outline
 #hitmarker { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; opacity: 0;
   background: linear-gradient(45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%), linear-gradient(-45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%); }
 #hitmarker.hs { filter: drop-shadow(0 0 3px #f33) sepia(1) saturate(8) hue-rotate(-30deg); }
-#scope { position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 0, transparent 38vh, #000 38.4vh); }
-#scope::before, #scope::after { content: ""; position: absolute; background: #000; }
-#scope::before { left: 0; right: 0; top: 50%; height: 1px; }
-#scope::after { top: 0; bottom: 0; left: 50%; width: 1px; }
+#optic-dot { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #ff4439; box-shadow: 0 0 4px #ff4c3b99; }
+#scope { --scope-radius: min(38vh, 46vw); position: absolute; inset: 0; background: radial-gradient(circle at center, transparent calc(var(--scope-radius) - 2px), #07090b var(--scope-radius)); }
+.scope-reticle { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(var(--scope-radius) * 2); height: calc(var(--scope-radius) * 2); }
+#scope .scope-acog { display: none; }
+#scope[data-kind="acog"] .scope-acog { display: block; }
+#scope[data-kind="acog"] .scope-mildot { display: none; }
+.scope-readout { position: absolute; top: calc(50% + var(--scope-radius) * .78); left: 50%; transform: translateX(-50%); font: 600 11px monospace; letter-spacing: .12em; color: #172021; text-shadow: 0 0 2px #ddd9; }
 #vitals { position: absolute; left: 18px; bottom: 16px; font-size: 40px; font-weight: 700; }
 #vitals small, #ammo small { font-size: 14px; font-weight: 500; opacity: .75; margin: 0 18px 0 6px; }
 #hp.low { color: #ff5a4d; }
-#money { position: absolute; right: 18px; bottom: 96px; font-size: 22px; font-weight: 700; color: #8fe08a; }
+#money { position: absolute; right: 18px; bottom: 132px; font-size: 22px; font-weight: 700; color: #8fe08a; }
 #ammo { position: absolute; right: 18px; bottom: 16px; text-align: right; font-size: 40px; font-weight: 700; }
 #ammo small { margin: 0 0 0 6px; font-size: 20px; }
 #wname { font-size: 14px; font-weight: 500; opacity: .85; }

@@ -1,6 +1,6 @@
 // Rendering: map geometry, player models, first-person weapon and effects.
 import * as THREE from '../vendor/three.module.min.js';
-import { gunModel, handModel, weaponInfo } from './models.js';
+import { gunModel, handModel, weaponInfo, withOptic, weaponModelKey } from './models.js';
 import { playerModel } from './characters.js';
 import { buildDesert } from './desert.js';
 import { locationTexture, locationTint, lightLocation, buildLocation } from './locations.js';
@@ -291,8 +291,9 @@ export class World {
     if (m.kneeL) m.kneeL.rotation.x = Math.max(0, -sw) * .45;
     if (m.kneeR) m.kneeR.rotation.x = Math.max(0, sw) * .45;
     m.pack.visible = !!(s.flags & 2);
-    if (m.weapon !== w.id) {
-      m.weapon = w.id; m.gunSlot.clear(); m.gunSlot.add(gunModel(w));
+    const modelKey = weaponModelKey(w);
+    if (m.weapon !== modelKey) {
+      m.weapon = modelKey; m.gunSlot.clear(); m.gunSlot.add(gunModel(w));
       if (m.gunSlotL) { m.gunSlotL.clear(); if (w.dual) m.gunSlotL.add(gunModel(w)); }
       if (m.leftArm) m.leftArm.visible = !w.dual;
       if (m.leftArmDual) m.leftArmDual.visible = !!w.dual;
@@ -307,19 +308,21 @@ export class World {
     }
   }
 
-  syncSimple(store, list, make) {
+  syncSimple(store, list, make, keyOf = e => String(e[1])) {
     const seen = new Set();
     for (const e of list) {
       seen.add(e[0]);
       let m = store.get(e[0]);
-      if (!m) { m = make(e); store.set(e[0], m); this.scene.add(m); m.position.set(e[2], e[3], e[4]); }
+      const renderKey = keyOf(e);
+      if (m && m.userData.renderKey !== renderKey) { this.scene.remove(m); m = null; }
+      if (!m) { m = make(e); m.userData.renderKey = renderKey; store.set(e[0], m); this.scene.add(m); m.position.set(e[2], e[3], e[4]); }
       m.userData.target = [e[2], e[3], e[4]];
     }
     for (const [id, m] of store) if (!seen.has(id)) { this.scene.remove(m); store.delete(id); }
   }
   setItems(list, weapons) {
     this.syncSimple(this.items, list, e => {
-      const weapon = weapons[e[1]], h = new THREE.Group();
+      const weapon = withOptic(weapons[e[1]], e[5] || 0), h = new THREE.Group();
       for (let side = 0; side < (weapon.dual ? 2 : 1); side++) {
         const gun = gunModel(weapon); gun.rotation.z = Math.PI / 2; gun.scale.setScalar(1.3);
         if (weapon.dual) { gun.position.x = side ? .16 : -.16; gun.rotation.y = side ? -.08 : .08; }
@@ -329,7 +332,7 @@ export class World {
         h.add(gun);
       }
       return h;
-    });
+    }, e => weaponModelKey(withOptic(weapons[e[1]], e[5] || 0)));
   }
   setNades(list, weapons) {
     this.syncSimple(this.nades, list, e => gunModel(weapons[e[1]]));
@@ -380,8 +383,9 @@ export class World {
   }
 
   setViewmodel(weapon) {
-    const w = weaponInfo(weapon);
-    if (w.id === this.vmWeapon?.id) return;
+    const w = withOptic(weapon), key = weaponModelKey(w);
+    if (key === this.vmModelKey) return;
+    this.vmModelKey = key;
     this.vmWeapon = w; this.vmCls = w.cls; this.vmSwitch = 1; this.vmAim = 0;
     this.handKick.fill(0); this.flashTimers.fill(0); this.handCycleAge.fill(Infinity);
     this.vmHands.forEach((hand, side) => {
@@ -394,6 +398,7 @@ export class World {
       const muzzle = this.muzzles[side]; muzzle.position.set(...gun.userData.muzzle); muzzle.visible = false; hand.add(muzzle);
       hand.userData.sightY = gun.userData.sightY;
       hand.userData.dualHip = gun.userData.dualHip;
+      hand.userData.hip = gun.userData.hip;
     });
   }
   kick(amount, hand = 1) {
@@ -438,14 +443,14 @@ export class World {
       const bob = Math.min(1, (view.speed || 0) / 6) * (1 - aim * .94);
       const lower = Math.max(this.vmSwitch, this.vmReload * .65);
       const reloadWave = this.vmReload * Math.sin(this.vmTime * 5 + side * .8);
-      const hip = hand.userData.dualHip || [.23, -.15, -.45];
-      const hipX = dual ? sign * hip[0] : .20;
-      const hipY = dual ? hip[1] : -.14;
+      const hip = dual ? hand.userData.dualHip || [.23, -.15, -.45] : hand.userData.hip || [.20, -.14, -.43];
+      const hipX = dual ? sign * hip[0] : hip[0];
+      const hipY = hip[1];
       const sightY = hand.userData.sightY || .12;
       hand.position.set(
         hipX * (1 - aim) + Math.cos(this.vmBob) * .006 * bob,
         THREE.MathUtils.lerp(hipY, -sightY, aim) - lower * .19 + Math.abs(Math.sin(this.vmBob)) * .008 * bob,
-        THREE.MathUtils.lerp(dual ? hip[2] : -.43, -.26, aim) + kick * .055 + lower * .08);
+        THREE.MathUtils.lerp(hip[2], -.26, aim) + kick * .055 + lower * .08);
       hand.rotation.set(kick * .13 - lower * .48, (dual ? sign * -.035 : .025) * (1 - aim), sign * (lower * .32 + reloadWave * .06));
       const gun = hand.getObjectByName('weapon');
       const slide = gun?.getObjectByName('slide');
@@ -458,11 +463,29 @@ export class World {
         const cycle = Math.sin(phase * Math.PI);
         lever.rotation.x = cycle * 1.05 + this.vmReload * .24;
         const bolt = gun.getObjectByName('bolt');
-        if (bolt) bolt.position.z = cycle * .057 + this.vmReload * .018;
+        if (bolt) {
+          if (gun.userData.rollingBreech) {
+            const rest = bolt.userData.rest;
+            bolt.rotation.x = -cycle * 1.18 - this.vmReload * .2;
+            bolt.position.set(rest[0], rest[1] - cycle * .025, rest[2] + cycle * .02);
+          } else bolt.position.z = cycle * .057 + this.vmReload * .018;
+        }
         // Each wrist follows its own lever stroke, independently of the other gun.
         hand.rotation.x -= cycle * .065;
         hand.rotation.z += sign * cycle * .12;
       }
+      const boltAction = gun?.getObjectByName('bolt_action');
+      if (boltAction) {
+        const phase = Math.min(1, this.handCycleAge[side] / Math.max(.5, this.vmWeapon.interval));
+        const lift = THREE.MathUtils.smoothstep(phase,.08,.18) * (1 - THREE.MathUtils.smoothstep(phase,.74,.9));
+        const travel = THREE.MathUtils.smoothstep(phase,.18,.35) * (1 - THREE.MathUtils.smoothstep(phase,.55,.76));
+        boltAction.position.z = travel * (gun.userData.boltTravel || .12);
+        const handle = boltAction.getObjectByName('bolt_handle');
+        if (handle) handle.rotation.z = lift * 1.05;
+        hand.rotation.z -= lift * .045; hand.rotation.x -= travel * .025;
+      }
+      const reticle = gun?.getObjectByName('optic_reticle');
+      if (reticle) reticle.visible = this.vmWeapon.optic === 1 && aim > .2 && aim < .85 && !view.scoped;
       const magazine = gun?.getObjectByName('magazine');
       if (magazine) magazine.position.y = -this.vmReload * (.07 + Math.max(0, reloadWave) * .08);
       const flash = this.muzzles[side];

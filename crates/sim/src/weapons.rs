@@ -46,6 +46,42 @@ pub struct Weapon {
     pub ads: bool,
     /// 0 both teams, 1 attackers only, 2 defenders only.
     pub team: u8,
+    /// Lower the scope while cycling the action after a shot.
+    pub bolt_action: bool,
+}
+
+pub struct Optic {
+    pub index: u8,
+    pub id: &'static str,
+    pub name: &'static str,
+    pub price: u32,
+    pub zoom: f32,
+}
+
+pub static OPTICS: [Optic; 2] = [
+    Optic { index: 1, id: "red_dot", name: "Red Dot", price: 500, zoom: 1.5 },
+    Optic { index: 2, id: "acog", name: "ACOG", price: 1200, zoom: 4.0 },
+];
+
+impl Weapon {
+    pub fn accepts_optic(&self, optic: u8) -> bool {
+        if self.dual || !self.ads { return false; }
+        match self.class {
+            C_PISTOL => optic == 1,
+            C_SHOTGUN | C_SMG | C_RIFLE | C_LMG => optic == 1 || optic == 2,
+            _ => false,
+        }
+    }
+
+    /// Damage before hit-zone, cover and armor multipliers. Titan keeps its
+    /// long-range punch while its close torso hit is lethal at full health.
+    pub fn damage_at(&self, distance: f32) -> f32 {
+        if self.id == "titan" {
+            110.0 - 16.0 * ((distance - 20.0) / 30.0).clamp(0.0, 1.0)
+        } else {
+            self.dmg * self.falloff.powf(distance / 10.0)
+        }
+    }
 }
 
 const fn gun(
@@ -58,7 +94,7 @@ const fn gun(
         spread, spread_inc: spread * 0.55 + 0.002, spread_max: spread * 5.0 + 0.02,
         recoil, falloff: 0.94, pen, speed, reward: 300, pellets: 1,
         zoom: if class >= C_PISTOL && class <= C_LMG { 1.35 } else { 0.0 },
-        dual: false, ads: class >= C_PISTOL && class <= C_LMG, team,
+        dual: false, ads: class >= C_PISTOL && class <= C_LMG, team, bolt_action: false,
     }
 }
 
@@ -77,6 +113,11 @@ const fn akimbo(mut w: Weapon) -> Weapon {
     w
 }
 
+const fn bolt_action(mut w: Weapon) -> Weapon {
+    w.bolt_action = true;
+    w
+}
+
 pub const KNIFE: usize = 0;
 pub const FRAG: usize = 1;
 pub const FLASH: usize = 2;
@@ -85,7 +126,7 @@ pub const BOMB: usize = 4;
 pub const PISTOL_ATK: usize = 5;
 pub const PISTOL_DEF: usize = 6;
 
-pub static WEAPONS: [Weapon; 31] = [
+pub static WEAPONS: [Weapon; 32] = [
     with(gun("knife", "Combat Knife", C_KNIFE, 0, 0, 45.0, 0.45, 0, 0, 0.0, true, 0.0, 0.0, 0.85, 6.35), 1.0, 1500, 1, 0.0),
     gun("frag", "Frag Grenade", C_FRAG, 0, 300, 100.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.6, 6.2),
     gun("flash", "Flashbang", C_FLASH, 0, 200, 0.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.0, 6.2),
@@ -125,6 +166,7 @@ pub static WEAPONS: [Weapon; 31] = [
     // Dual primaries: keep these appended so existing weapon indices stay stable.
     akimbo(with(gun("twin_mp7", "Dual MP7", C_SMG, 0, 2600, 18.0, 0.075, 80, 240, 3.6, true, 0.024, 0.008, 0.52, 5.9), 0.87, 600, 1, 0.0)),
     akimbo(with(gun("twin_lever", "Twin Lever-Action", C_SHOTGUN, 0, 2400, 17.0, 0.85, 10, 40, 4.0, false, 0.065, 0.055, 0.50, 5.65), 0.68, 900, 7, 0.0)),
+    bolt_action(with(gun("titan", "Titan .50", C_SNIPER, 0, 6200, 110.0, 2.3, 5, 20, 4.8, false, 0.00015, 0.0, 1.0, 4.5), 1.0, 100, 1, 12.0)),
 ];
 
 pub fn by_id(id: &str) -> Option<usize> {

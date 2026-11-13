@@ -3,6 +3,7 @@ import { World } from './world.js';
 import { Hud } from './hud.js';
 import { Sfx } from './audio.js';
 import { BotSettings } from './settings.js';
+import { withOptic } from './models.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('view');
@@ -66,10 +67,11 @@ function installMap(message) {
     aimBlend = punch = punchYaw = shotsC = 0; recoilWeapon = -1;
     handShots.fill(0); handSince.fill(9);
     hud.toggleBuy(false); if (hud.wheelOpen) hud.closeWheel();
-    world.buildMap(message.map); hud.init(message);
+    world.buildMap(message.map);
     $('killfeed').replaceChildren(); $('center').textContent = '';
     selectPredictionMap();
   }
+  hud.init(message);
   $('map-name').textContent = message.map.name;
   serverReady = true; updateReady();
 }
@@ -156,12 +158,12 @@ for (const b of document.querySelectorAll('.teams button')) {
 function onSnap(m) {
   const now = performance.now() / 1000;
   timeOffset = Math.max(timeOffset - 0.0005, m.tm - now);
-  m.players = new Map(m.pl.map(a => [a[0], { id: a[0], team: a[1], alive: !!a[2], x: a[3], y: a[4], z: a[5], yaw: a[6], pitch: a[7], hp: a[8], w: a[9], flags: a[10] }]));
+  m.players = new Map(m.pl.map(a => [a[0], { id: a[0], team: a[1], alive: !!a[2], x: a[3], y: a[4], z: a[5], yaw: a[6], pitch: a[7], hp: a[8], w: a[9], flags: a[10], optic: a[11] || 0 }]));
   snaps.push(m); if (snaps.length > 40) snaps.shift();
   latest = m; me = m.me;
   if (!me || !wasm) return;
-  if (recoilWeapon !== me.w) {
-    recoilWeapon = me.w; shotsC = 0; sinceShot = 9;
+  if (recoilWeapon !== `${me.w}/${me.optic || 0}`) {
+    recoilWeapon = `${me.w}/${me.optic || 0}`; shotsC = 0; sinceShot = 9;
     handShots.fill(0); handSince.fill(9);
   }
   const mp = m.players.get(myId), alive = !!mp?.alive;
@@ -205,8 +207,9 @@ function onEvent(ev) {
         sinceShot = 0;
       }
       for (const h of ev.h) { world.tracer(from, h); world.puff(h, h[3] ? 0xb01818 : 0xd8c9a0, h[3] ? 0.09 : 0.06); }
-      sfx.shot(cls, own ? null : ev.o);
+      sfx.shot(cls, own ? null : ev.o, weapon.id === 'titan');
       if (weapon.id === 'twin_lever') sfx.leverCycle(own ? null : ev.o);
+      if (weapon.boltAction) sfx.boltCycle(own ? null : ev.o);
       break;
     }
     case 'swing': sfx.swing(posOf(ev.id), ev.hit); if (ev.id === myId) world.kick(0.7); break;
@@ -391,7 +394,8 @@ function frame(tms) {
 
   const rt = now + timeOffset - INTERP;
   const alive = wasAlive && !!pred && !!me;
-  const w = me ? weapons[me.w] : null;
+  const w = me ? withOptic(weapons[me.w], me.optic || 0, hello.optics) : null;
+  let viewWeapon = w, viewAiming = false;
   let speed = 0;
 
   if (me && wasm) {
@@ -436,6 +440,7 @@ function frame(tms) {
     if (pred[6] > 0.5 && speed > 3.4) { stride += speed * dt; if (stride > 2.3) { stride = 0; sfx.step(null, true); } }
     hidden = myId;
     world.setViewmodel(w);
+    viewAiming = !!(me.sc && w.ads && !w.dual && me.rl <= 0);
   } else {
     // Spectate a living team-mate (click to cycle), or fall back to an overview.
     const mine = roster.get(myId)?.tm;
@@ -446,15 +451,17 @@ function frame(tms) {
       if (t) {
         cam.position.set(t.x, t.y + (t.flags & 1 ? 1.05 : 1.62), t.z); cam.rotation.set(t.pitch, t.yaw, 0);
         hidden = t.id; specName = `Spectating ${pname(t.id)} — click for next`;
-        world.setViewmodel(weapons[t.w]);
+        viewWeapon = withOptic(weapons[t.w], t.optic || 0, hello.optics);
+        viewAiming = !!(t.flags & 4) && viewWeapon.ads && !viewWeapon.dual;
+        world.setViewmodel(viewWeapon);
       }
     } else { cam.position.set(0, (world.overviewHeight || 46) * 1.3, (world.overviewRadius || 62) * .65); cam.lookAt(0, 0, 0); }
   }
 
-  const aiming = !!(alive && me.sc && w.ads && !w.dual && me.rl <= 0);
+  const aiming = !!(hidden >= 0 && viewAiming);
   aimBlend += ((aiming ? 1 : 0) - aimBlend) * Math.min(1, dt * 16);
-  const scoped = aiming && w.zoom >= 4;
-  const mag = 1 + (Math.max(1, w?.zoom || 1) - 1) * aimBlend;
+  const scoped = aiming && viewWeapon.zoom >= 4;
+  const mag = 1 + (Math.max(1, viewWeapon?.zoom || 1) - 1) * aimBlend;
   const wantFov = 2 * Math.atan(Math.tan(37 * Math.PI / 180) / mag) * 180 / Math.PI;
   if (Math.abs(wantFov - fov) > 0.05) { fov += (wantFov - fov) * Math.min(1, dt * 18); cam.fov = fov; cam.updateProjectionMatrix(); }
 
@@ -480,7 +487,7 @@ function frame(tms) {
   } else if (hud.buyOpen) { hud.toggleBuy(false); hud.renderBuy(me || { mo: 0 }, 1); }
   if (!alive && me && latest.ph !== 3) specName = specName || 'You will spawn next round';
   hud.update(dt, {
-    me, snap: latest, alive, weapons, scoped, aiming, sniper: alive && w.cls === 5, hint, progress, spec: specName, locked: locked(),
+    me, snap: latest, alive, weapons, scoped, aiming, viewWeapon, opticDot: aiming && viewWeapon.optic === 1 && aimBlend > .85, sniper: alive && w.cls === 5, hint, progress, spec: specName, locked: locked(),
     gap: 4 + speed * 1.1 + shotsC * 1.6 + (alive && pred[6] < 0.5 ? 8 : 0),
   });
   hud.scoreboard(keys.has('Tab') || latest.ph === 3, roster, latest, myId);
@@ -494,7 +501,7 @@ function drawRemote(now, dt, hidden) {
   const get = sample(now + timeOffset - INTERP);
   for (const id of latest.players.keys()) {
     const s = get(id); if (!s) continue;
-    if (world.setPlayer(id, s, weapons[s.w], dt, id === hidden) && id !== hidden) sfx.step([s.x, s.y, s.z], false);
+    if (world.setPlayer(id, s, withOptic(weapons[s.w], s.optic || 0, hello.optics), dt, id === hidden) && id !== hidden) sfx.step([s.x, s.y, s.z], false);
   }
   world.sweepPlayers();
   world.setItems(latest.it, weapons); world.setNades(latest.nd, weapons);

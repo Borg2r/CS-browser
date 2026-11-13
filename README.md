@@ -74,7 +74,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 - 30 rounds: sides swap at half-time after 15, first team to 16 wins.
 - Fixed spray patterns, bullet penetration through thin cover, fall damage,
   slow-down when hit, hold-to-aim iron sights and optics, knife slash / stab / backstab.
-- 26 firearms (pistols, four akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
+- 27 firearms (pistols, four akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
   knife, frag / flash / smoke grenades, armour, helmet and defuse kit.
 - Economy with kill rewards and round win / loss bonuses. The CS-inspired buy
   menu has six categories, weapon illustrations, prices and statistics, a budget
@@ -94,7 +94,21 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   click to fire each lever-action shotgun, which cycles independently after a
   shot. Left mouse controls the left gun, right mouse controls the right, and
   both can fire together. Akimbo never aims down sights. The HUD shows each
-  hand's ammunition; reload fills both guns from their shared reserve.
+  hand's ammunition; reload fills both guns from their shared reserve. The
+  lever-action pair uses detailed short M1887-style receivers, cut-down walnut
+  grips, large lever loops and animated rolling breeches.
+- **Equipment → Red Dot / ACOG:** buy a 1.5× red dot ($500) or 4× ACOG ($1,200)
+  for the gun currently held. Single pistols accept the red dot; single shotguns,
+  SMGs, rifles and machine guns accept either. Akimbo weapons and fixed-scope
+  snipers cannot mount these attachments. Optics stay on their individual gun
+  when switching slots, surviving a round, dropping it or picking it up. Buying
+  a different optic replaces the existing one at full price.
+- **Titan .50:** a slow bolt-action sniper in Rifles ($6,200), with a 12× scope,
+  five-round magazine, 2.3 seconds between shots and a 4.8-second reload. Direct
+  center-body damage is 110 within 20 m, decreases smoothly to 94 at 50 m and
+  stays at 94 beyond that, including against armor. Headshots remain lethal
+  through helmets at every range; legs do less damage. Normal walls and cover
+  still stop or reduce shots. Its bolt cycle briefly lowers the scope.
 
 ## Controls
 
@@ -132,3 +146,8 @@ development server. It temporarily changes the shared bot level.
 `node scripts/maps-smoke.mjs http://127.0.0.1:8088` checks map switching,
 permissions, multiplayer synchronization and matching WASM collision on a
 fresh development server. It changes the shared map and resets matches.
+
+`node scripts/optics-smoke.mjs http://127.0.0.1:8093` checks optic purchases,
+compatibility, aiming speed and attachment preservation through drop/pickup on
+an idle development server. Titan damage and bolt-cycle regressions run with
+`cargo test -p server`.
