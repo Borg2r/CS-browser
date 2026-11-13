@@ -74,7 +74,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 - 30 rounds: sides swap at half-time after 15, first team to 16 wins.
 - Fixed spray patterns, bullet penetration through thin cover, fall damage,
   slow-down when hit, hold-to-aim iron sights and optics, knife slash / stab / backstab.
-- 27 firearms (pistols, four akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
+- 28 firearms (pistols, four akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
   knife, frag / flash / smoke grenades, armour, helmet and defuse kit.
 - Economy with kill rewards and round win / loss bonuses. The CS-inspired buy
   menu has six categories, weapon illustrations, prices and statistics, a budget
@@ -109,6 +109,12 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   stays at 94 beyond that, including against armor. Headshots remain lethal
   through helmets at every range; legs do less damage. Normal walls and cover
   still stop or reduce shots. Its bolt cycle briefly lowers the scope.
+- **Kar98k:** an affordable bolt-action rifle in Rifles ($1,500), with a walnut
+  stock, iron sights, five-round internal magazine and 1.8 seconds between shots.
+  It is accurate when stationary, retains damage at long range, and accepts the
+  Red Dot and ACOG from Equipment. Reloading takes 3.8 seconds.
+- **P9S** is the renamed Kestrel 9 starter pistol; **QK-9mm** is the renamed
+  Cricket SD, the least expensive SMG. Their prices and weapon stats are unchanged.
 
 ## Controls
 

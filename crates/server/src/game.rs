@@ -842,7 +842,6 @@ impl Game {
             p.money -= optic.price;
             p.reload_t = 0.0;
             p.scoped = 0;
-            p.bolt_t = 0.0;
             p.cooldown = p.cooldown.max(0.35);
             return true;
         }
@@ -2345,6 +2344,129 @@ mod tests {
     }
 
     #[test]
+    fn kar98k_is_an_affordable_both_team_iron_sight_rifle_with_optional_optics() {
+        let w = by_id("kar98k").unwrap();
+        assert_eq!(w, 32, "new weapons must not shift existing protocol indices");
+        for team in [ATK, DEF] {
+            let mut g = weapon_game("kestrel");
+            let p = &mut g.players[0];
+            p.team = team;
+            let point = g.map.spawns[(team - 1) as usize][0];
+            p.st.pos = [point[0], 0.01, point[1]];
+            p.money = 1499;
+            assert!(!g.buy(0, "kar98k"));
+            assert_eq!(g.players[0].money, 1499);
+            assert!(g.players[0].prim.is_none());
+            g.players[0].money = 1500;
+            assert!(g.buy(0, "kar98k"));
+            let p = &g.players[0];
+            assert_eq!(p.money, 0);
+            assert_eq!(p.slot, 0);
+            assert_eq!(p.sec.unwrap().w, PISTOL_ATK, "buying the rifle preserves the sidearm");
+            assert_eq!(p.gun().unwrap().w, w);
+            assert_eq!((p.gun().unwrap().ammo, p.gun().unwrap().reserve, p.gun().unwrap().optic), (5, 35, 0));
+            assert_eq!(p.gun().unwrap().effective_zoom(), 1.35, "the default is iron sights, not a telescope");
+            g.players[0].money = 1700;
+            assert!(g.buy(0, "red_dot"));
+            assert_eq!(g.players[0].gun().unwrap().effective_zoom(), 1.5);
+            assert!(g.buy(0, "acog"));
+            assert_eq!(g.players[0].gun().unwrap().effective_zoom(), 4.0);
+            assert_eq!(g.players[0].money, 0);
+            let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
+            let rifle = &hello["weapons"][w];
+            assert_eq!(rifle["name"], "Kar98k"); assert_eq!(rifle["cls"], C_RIFLE);
+            assert_eq!(rifle["zoom"], json!(1.35_f32)); assert_eq!(rifle["optics"], json!([1, 2]));
+            assert_eq!(rifle["boltAction"], true); assert_eq!(rifle["auto"], false);
+            assert_eq!(hello["weapons"][PISTOL_ATK]["id"], "kestrel");
+            assert_eq!(hello["weapons"][PISTOL_ATK]["name"], "P9S");
+            let cheapest_smg = WEAPONS.iter().filter(|w| w.class == C_SMG).min_by_key(|w| w.price).unwrap();
+            assert_eq!(cheapest_smg.id, "cricket"); assert_eq!(cheapest_smg.name, "QK-9mm");
+            assert_eq!(cheapest_smg.team, DEF); assert_eq!(cheapest_smg.price, 1250);
+        }
+    }
+
+    #[test]
+    fn kar98k_hits_distant_targets_at_normal_bolt_cadence_with_irons_and_optics() {
+        for optic in [0, 1, 2] {
+            let mut g = titan_target(240.0, 1.6, None);
+            g.players[0].prim = Some(Gun::new(by_id("kar98k").unwrap()));
+            g.players[0].gun_mut().unwrap().optic = optic;
+            for shot in 0..5 {
+                g.players[1].alive = true; g.players[1].hp = 100;
+                if shot > 0 { input(&mut g, B_FIRE2, 1.8 + TICK); }
+                input(&mut g, B_FIRE | B_FIRE2, TICK);
+                assert!(!g.players[1].alive, "optic{optic}: settled shot{shot} must hit the aimed helmet at240m");
+                assert_eq!(g.players[0].gun().unwrap().ammo, 4 - shot);
+                assert_eq!(g.players[0].scoped, 0, "working the bolt lowers either sight");
+            }
+        }
+        for (distance, lowest, highest) in [(10.0, 62, 63), (120.0, 59, 60), (240.0, 55, 56)] {
+            let mut g = titan_target(distance, 1.1, None);
+            g.players[0].prim = Some(Gun::new(by_id("kar98k").unwrap()));
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            let dealt = 100 - g.players[1].hp;
+            assert!(dealt >= lowest && dealt <= highest,
+                    "armored torso at{distance}m took{dealt}; rifle must retain range without a body one-shot");
+            assert!(g.players[1].alive);
+        }
+    }
+
+    #[test]
+    fn installing_an_optic_mid_bolt_cycle_keeps_cadence_and_settles_the_next_shot() {
+        for optic in ["red_dot", "acog"] {
+            let mut g = titan_target(240.0, 1.6, None);
+            let point = g.map.spawns[0][0];
+            g.players[0].st.pos = [point[0], 0.01, point[1]];
+            g.players[1].st.pos = [point[0], 0.01, point[1] - 240.0];
+            g.players[0].prim = Some(Gun::new(by_id("kar98k").unwrap()));
+            g.players[0].money = 2000;
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert!(!g.players[1].alive);
+            assert!(g.buy(0, optic));
+            assert!(g.players[0].bolt_t > 1.7, "installing a sight must not cancel the action still cycling");
+            g.players[1].alive = true; g.players[1].hp = 100;
+            input(&mut g, B_FIRE2, TICK);
+            assert_eq!(g.players[0].scoped, 0);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].gun().unwrap().ammo, 4, "installing sights cannot shorten the firing delay");
+            input(&mut g, B_FIRE2, 1.8);
+            assert_eq!(g.players[0].scoped, 1);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert!(!g.players[1].alive, "completed cycle must settle recoil for the new{optic} sight");
+            assert_eq!(g.players[0].gun().unwrap().ammo, 3);
+        }
+    }
+
+    #[test]
+    fn kar98k_bolt_cadence_cannot_be_shortened_by_holding_or_switching_slots() {
+        let mut g = weapon_game("kar98k");
+        g.players[0].sec = Some(Gun::new(PISTOL_ATK));
+        input(&mut g, B_FIRE2, TICK);
+        assert_eq!(g.players[0].scoped, 1);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 4);
+        assert_eq!(g.players[0].scoped, 0);
+        g.select_slot(0, 0);
+        assert!(g.players[0].bolt_t > 1.7, "selecting the current slot cannot skip cycling");
+        for _ in 0..60 { input(&mut g, B_FIRE | B_FIRE2, TICK); }
+        assert_eq!(g.players[0].gun().unwrap().ammo, 4);
+        assert_eq!(g.players[0].scoped, 0);
+        g.select_slot(0, 1); g.select_slot(0, 0);
+        input(&mut g, B_FIRE2, TICK);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 4, "switching away and back does not shorten the firing cooldown");
+        input(&mut g, B_FIRE2, 0.85);
+        assert_eq!(g.players[0].scoped, 1);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 3);
+        for _ in 0..120 { input(&mut g, B_FIRE | B_FIRE2, TICK); }
+        assert_eq!(g.players[0].gun().unwrap().ammo, 3, "holding fire cannot repeat a bolt-action shot");
+        input(&mut g, B_FIRE2, TICK);
+        input(&mut g, B_FIRE | B_FIRE2, TICK);
+        assert_eq!(g.players[0].gun().unwrap().ammo, 2);
+    }
+
+    #[test]
     fn dual_primaries_buy_into_primary_slot_for_both_teams() {
         for team in [ATK, DEF] {
             for id in ["twin_mp7", "twin_lever"] {
@@ -2702,7 +2824,7 @@ mod tests {
         let mut g = weapon_game("twin_kestrel");
         let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
         let definitions = hello["weapons"].as_array().unwrap();
-        assert_eq!(definitions.len(), 32);
+        assert_eq!(definitions.len(), 33);
         for (id, class, capacity, pellets, automatic) in [("twin_mp7", C_SMG, 80, 1, true), ("twin_lever", C_SHOTGUN, 10, 7, false)] {
             let def = definitions.iter().find(|w| w["id"] == id).unwrap();
             assert_eq!(def["cls"], class); assert_eq!(def["slot"], 0); assert_eq!(def["team"], 0);

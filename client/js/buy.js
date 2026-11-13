@@ -27,6 +27,7 @@ const INFO = {
   red_dot:'A reflex sight for compatible single weapons, including pistols. Optics stay attached when the gun is dropped.',
   acog:'A magnified scope for compatible single shotguns, SMGs, rifles and machine guns. Pistols cannot use it.',
   titan:'Heavy bolt-action with a fixed 12× scope. Lethal headshots; body hits deal 110 damage within 20 m and 94 from 50 m, even through armor.',
+  kar98k:'Affordable bolt-action precision for long-range shots. Iron sights by default; accepts Red Dot or ACOG from Equipment.',
 };
 
 // Original lightweight illustrations: no image downloads or extra WebGL contexts.
@@ -56,6 +57,9 @@ function artwork(item) {
     shape = `<g transform="translate(-17,-6) scale(.83)">${lever}</g><g transform="translate(62,28) scale(.78)">${lever}</g>`;
   } else if (item.id === 'titan') {
     shape = '<path d="M10 53 39 46H62V42H155V61H112L103 72H90L82 94H69L76 63H57L29 80H10ZM121 61H144V82H122ZM155 48H218V56H155ZM216 43H234V61H216Z"/><path d="M70 24H86V43H70ZM84 27H132V40H84ZM130 21H158V46H130ZM91 40H98V45H91ZM121 39H128V45H121ZM105 20H119V28H105ZM174 56 158 92H164L180 61 194 92H201L184 56Z"/><path d="M107 54 110 65 119 66" fill="none" stroke="currentColor" stroke-width="5"/><path class="bu-etch" d="M20 59 48 53M69 49H97M130 66V77M137 66V77M143 26V41M222 46V58M228 46V58"/>';
+  } else if (item.id === 'kar98k') {
+    // Slender unscoped sporting profile: continuous wood stock and bent bolt handle.
+    shape = '<path d="M11 61 39 55 61 62 79 57H177V66H91L77 72 63 69 43 87H12Z" fill="#a77c50"/><path d="M73 49H117V59H73ZM115 50H230V55H115ZM104 43H113V51H104ZM217 43H223V51H217ZM169 50H175V67H169ZM8 61H13V88H8Z"/><path d="M95 57 103 66 109 66" fill="none" stroke="currentColor" stroke-width="4"/><circle cx="111" cy="67" r="5"/><path d="M80 69V77Q89 87 100 75V67M89 66 86 75" fill="none" stroke="currentColor" stroke-width="3"/><path d="M21 66 38 62 53 67M21 79 39 72M120 61H162" fill="none" stroke="#715235" stroke-width="2"/><path class="bu-etch" d="M78 54H99M179 53H211"/>';
   } else if (item.cls === 1) {
     const heavy = item.id.includes('mammoth');
     const pistol = `<path d="M53 39H${heavy ? 188 : 177}V55H139L132 66H105L99 101H73L83 58H53ZM110 58V71H127L134 57H127L122 66H117V58Z"/><path class="bu-etch" d="M61 48H163M89 65 82 92M151 41V53M158 41V53M165 41V53"/><path d="M64 35H71V40H64M155 35H164V40H155"/>`;
@@ -216,11 +220,11 @@ export class BuyMenu {
     if (!panel || !item) return;
     const state = this.state(item), gun = item.mag > 0;
     const desc = INFO[item.id] || (item.dual ? 'Independent triggers: left mouse fires the left weapon; right mouse fires the right. No aiming mode.' : item.cls === 5 ? 'Precision at range. Right mouse aims through the scope. Settle your movement before taking the shot.' : item.cls === 2 ? 'Built for close quarters. Damage is shown per pellet; your spread is most effective up close.' : item.cls === 6 ? 'Sustained fire and a deep magazine. Control your bursts and plan around the longer reload.' : item.auto ? 'Automatic fire. Right mouse aims down sights. Short bursts help control recoil at range.' : 'A reliable sidearm. Click to fire and hold right mouse to aim down sights.');
-    const type = item.attachment ? 'WEAPON OPTIC' : item.id === 'titan' ? 'HEAVY BOLT-ACTION RIFLE' : TYPE[item.cls] || 'TACTICAL EQUIPMENT';
+    const type = item.attachment ? 'WEAPON OPTIC' : item.id === 'titan' ? 'HEAVY BOLT-ACTION RIFLE' : item.boltAction ? 'BOLT-ACTION RIFLE' : TYPE[item.cls] || 'TACTICAL EQUIPMENT';
     const stat = (name, value, ratio) => `<div class="bu-stat"><div><span>${name}</span><b>${value}</b></div><div class="bu-meter"><i style="width:${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%"></i></div></div>`;
     const stats = item.attachment ? `<div class="bu-gear-benefit bu-optic-benefit"><span>MAGNIFICATION</span><strong>${item.zoom}×</strong><small>Mount target: ${esc(state.target?.mag ? state.target.name : 'No firearm equipped')}<br>Currently fitted: ${esc(state.mounted?.name || 'No purchased optic')}</small></div>` : gun
       ? stat(item.cls === 2 ? 'Damage / pellet' : 'Base damage', item.dmg, item.dmg / 115)
-        + (item.id === 'titan' ? stat('Bolt cycle', `${item.interval.toFixed(1)} s`, 1 - item.interval / 3) : stat(item.dual ? 'Rate / hand' : 'Fire rate', `${Math.round(60 / item.interval)} RPM`, (60 / item.interval) / 900))
+        + (item.boltAction ? stat('Bolt cycle', `${item.interval.toFixed(1)} s`, 1 - item.interval / 3) : stat(item.dual ? 'Rate / hand' : 'Fire rate', `${Math.round(60 / item.interval)} RPM`, (60 / item.interval) / 900))
         + stat(item.cls === 2 ? 'Shell capacity' : 'Magazine', item.dual ? `${item.mag / 2} + ${item.mag / 2}` : `${item.mag} ${item.cls === 2 ? 'shells' : 'rounds'}`, item.mag / 100)
         + stat('Reload time', `${item.reload.toFixed(1)} s`, 1 - item.reload / 6)
       : `<div class="bu-gear-benefit"><span>${item.id === 'kit' ? 'DEFUSE TIME' : item.cls >= 7 ? 'CARRY CAPACITY' : 'BODY ARMOR'}</span><strong>${item.id === 'kit' ? '5 seconds' : item.cls >= 7 ? (item.cls === 8 ? '2 flashbangs' : '1 grenade') : '100 points'}</strong>${item.id === 'vesthelm' ? '<small>Includes helmet protection</small>' : ''}</div>`;

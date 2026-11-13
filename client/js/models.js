@@ -2,6 +2,7 @@
 // shared between instances; only slides, hands and magazines need transforms.
 import * as THREE from '../vendor/three.module.min.js';
 import { buildTitan } from './titan.js';
+import { buildKar98k } from './kar98k.js';
 
 const bevelShape = new THREE.Shape();
 bevelShape.moveTo(-.46, -.46); bevelShape.lineTo(.46, -.46); bevelShape.lineTo(.46, .46); bevelShape.lineTo(-.46, .46); bevelShape.closePath();
@@ -44,7 +45,7 @@ class Parts {
   add(shape, material, size, position = [0, 0, 0], rotation = [0, 0, 0]) {
     const key = material.uuid;
     if (!this.buckets.has(key)) this.buckets.set(key, { material, positions: [], normals: [], uvs: [], indices: [] });
-    const b = this.buckets.get(key), g = primitive[shape];
+    const b = this.buckets.get(key), g = typeof shape === 'string' ? primitive[shape] : shape;
     scratch.position.set(...position); scratch.rotation.set(...rotation); scratch.scale.set(...size); scratch.updateMatrix();
     const normalMatrix = new THREE.Matrix3().getNormalMatrix(scratch.matrix);
     const p = new THREE.Vector3(), n = new THREE.Vector3(), a = g.attributes, offset = b.positions.length / 3;
@@ -479,7 +480,7 @@ function equipment(w) {
 
 export function gunModel(weapon) {
   const w = withOptic(weapon), key = weaponModelKey(w);
-  if (!templates.has(key)) templates.set(key, w.id === 'titan' ? buildTitan(w, { Parts, MAT, mat, rails, marking }) : w.id === 'twin_mp7' ? mp7(w) : w.id === 'twin_lever' ? leverShotgun(w) : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
+  if (!templates.has(key)) templates.set(key, w.id === 'kar98k' ? buildKar98k(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, marking }) : w.id === 'titan' ? buildTitan(w, { Parts, MAT, mat, rails, marking }) : w.id === 'twin_mp7' ? mp7(w) : w.id === 'twin_lever' ? leverShotgun(w) : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
   return templates.get(key).clone(true);
 }
 

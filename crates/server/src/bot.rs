@@ -179,6 +179,8 @@ fn shop(g: &mut Game, i: usize) {
             list.push(if atk { "rook" } else { "sentinel" });
         } else if money >= 2900 {
             list.push(if atk { "jackal" } else { "falcon" });
+        } else if money >= 2200 && roll < 0.18 {
+            list.push("kar98k");
         } else if money >= 2100 {
             list.push(["lynx", "cinder", "ram"][g.rng.below(3)]);
         } else if money >= 1000 && roll < 0.5 {
@@ -400,7 +402,7 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
                     if g.rng.f() < 0.5 { -1 } else { 1 }
                 } else { 0 };
             }
-            if wdef.class != C_SNIPER {
+            if wdef.class != C_SNIPER && !wdef.bolt_action {
                 buttons |= match bot.strafe {
                     -1 => B_LEFT,
                     1 => B_RIGHT,
@@ -570,6 +572,18 @@ mod tests {
             assert_eq!(g.players[0].buttons & (B_FIRE | B_FIRE2), B_FIRE | B_FIRE2,
                        "{id} bot must use both guns");
         }
+    }
+
+    #[test]
+    fn bots_stop_strafing_to_aim_a_bolt_action_rifle() {
+        let mut g = duel(Difficulty::Easy);
+        g.players[0].prim = Some(Gun::new(by_id("kar98k").unwrap()));
+        g.players[0].slot = 0;
+        g.players[0].bot.as_mut().unwrap().strafe = 1;
+        first_trigger(&mut g, 120);
+        assert_eq!(g.players[0].buttons & (B_FWD | B_BACK | B_LEFT | B_RIGHT), 0,
+                   "an iron-sighted bolt rifle needs the same settled firing stance as a sniper");
+        assert_ne!(g.players[0].buttons & B_FIRE2, 0, "bot aims with iron sights at range");
     }
 
     #[test]

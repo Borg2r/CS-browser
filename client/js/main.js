@@ -199,7 +199,7 @@ function onEvent(ev) {
         const c = world.camera, f = [-Math.sin(yaw), -Math.cos(yaw)];
         const side = weapon.dual ? (hand === 0 ? -0.23 : 0.23) : 0.16 * (1 - aimBlend);
         from = [c.position.x + f[0] * 0.6 + Math.cos(yaw) * side, c.position.y - 0.14, c.position.z + f[1] * 0.6 - Math.sin(yaw) * side];
-        world.kick(cls === 5 || cls === 2 ? 0.9 : 0.4, hand);
+        world.kick(weapon.boltAction || cls === 5 || cls === 2 ? 0.9 : 0.4, hand);
         if (weapon.dual) {
           handShots[hand]++; handSince[hand] = 0;
           shotsC = Math.max(...handShots);
@@ -429,7 +429,10 @@ function frame(tms) {
         if (handSince[hand] > Math.max(w.interval * 1.7, 0.2)) handShots[hand] = Math.max(0, handShots[hand] - dt * 14);
       }
       shotsC = Math.max(...handShots);
-    } else if (sinceShot > Math.max(w.interval * 1.7, 0.2)) shotsC = Math.max(0, shotsC - dt * 14);
+    } else if (sinceShot > (w.boltAction ? .25 : Math.max(w.interval * 1.7, 0.2))) {
+      // Single bolt shots settle during the action, before the next accurate shot.
+      shotsC = Math.max(0, shotsC - dt * 14);
+    }
     // Mirrors sim::weapons::recoil_offset so the view follows the spray pattern.
     const target = Math.min(shotsC, 9) * w.recoil;
     const side = shotsC > 4 ? w.recoil * 1.8 * Math.sin((shotsC - 4) * 0.5) * Math.min((shotsC - 4) / 4, 1) : 0;
