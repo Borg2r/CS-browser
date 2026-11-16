@@ -200,3 +200,4 @@ button:focus-visible, select:focus-visible { outline: 2px solid #e5c38a; outline
 #map-brief[data-theme="industrial"] { border-color: #7da9b3; background: #172b32aa; }
 #map-brief[data-theme="office"] { border-color: #9bb7a2; background: #203229aa; }
 #map-brief[data-theme="ship"] { border-color: #7ca6d3; background: #192a40aa; }
+#map-brief[data-theme="datacenter"] { border-color: #69c9d5; background: #162c39dd; }

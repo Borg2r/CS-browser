@@ -2,6 +2,7 @@
 // Furniture sits on existing cover; scenery beyond the boundary is unreachable.
 // Repeated details share instanced batches, and everything belongs to mapGroup.
 import * as THREE from '../vendor/three.module.min.js';
+import { datacenterTexture, datacenterTint, buildDatacenter } from './datacenter.js';
 
 const TAU = Math.PI * 2;
 const STEEL = [0xa44837, 0x386b88, 0x477566, 0xb69a50, 0xba7043, 0x4a7f88];
@@ -22,6 +23,7 @@ function grain(g, size, count, opacity = .12) {
 
 export function locationTexture(theme, type) {
   return texture((g, s) => {
+    if (theme === 'datacenter') { datacenterTexture(g, s, type); return; }
     g.fillStyle = '#e8e8e3'; g.fillRect(0, 0, s, s);
     if (type === 'ground') {
       g.fillStyle = theme === 'ship' ? '#98ada4' : theme === 'office' ? '#acaeab' : '#777b7c';
@@ -72,6 +74,7 @@ export function locationTexture(theme, type) {
 }
 
 export function locationTint(theme, mat, v, b) {
+  if (theme === 'datacenter') return datacenterTint(mat, v, b);
   if (theme === 'office') {
     if (mat === 1) {
       const x = (b[0] + b[3]) / 2, z = (b[2] + b[5]) / 2;
@@ -93,6 +96,7 @@ export function lightLocation(world, theme) {
     dockyard: [0xb4d0dc, 0xb6c9cc, 90, 260, 0xddeaf4, 0x68787b, 1.65, 0xffedd6, 2.6, 1.08],
     office: [0x8398a2, 0x9ca9aa, 100, 260, 0xe7f0ed, 0xa4a494, 2.4, 0xfff4da, 1.4, 1.05],
     ship: [0x99bacb, 0xa3bdc7, 110, 310, 0xd4e7f0, 0x657e83, 1.8, 0xffe4c0, 2.7, 1.1],
+    datacenter: [0x8ca8b8, 0x9eb5bc, 100, 280, 0xd6eef6, 0x87979f, 2.65, 0xe4f1f4, 1.7, 1.05],
   };
   const s = styles[theme === 'industrial' ? 'dockyard' : theme] || styles.desert;
   world.scene.background.set(s[0]); world.scene.fog = new THREE.Fog(s[1], s[2], s[3]);
@@ -451,7 +455,8 @@ function buildOffice(d, map) {
 export function buildLocation(parent, map) {
   const group = new THREE.Group(); group.name = `${map.name || map.id} architectural details`; parent.add(group);
   const d = new Dressing(group);
-  if (map.theme === 'office') buildOffice(d, map);
+  if (map.theme === 'datacenter') buildDatacenter(d, map, mountedLabel);
+  else if (map.theme === 'office') buildOffice(d, map);
   else if (map.theme === 'ship') buildShip(d, map);
   else buildDockyard(d, map);
   d.finish(); return group;

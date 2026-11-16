@@ -57,14 +57,19 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 
 ## Game
 
-- Four operations with protected spawns, multiple approaches and two bomb sites:
+- Five operations with protected spawns, multiple approaches and two bomb sites:
   **Sirocco**, the expanded desert town; **Dockyard**, the original container
   terminal with wider quays; **Norheim**, an office operation based on the actual
   Kontor Norheim model; and **Meridian**, a cargo ship with side decks, cargo
   aisles and a bridge. Norheim adapts the showroom, atrium, office rows, meeting
   room and warehouse into a spacious, single-floor playable layout.
+  **NORD Datacenter** adapts the uploaded NORD DC-02 IFC model: its 48-rack
+  server hall, technical corridor, UPS rooms, front support rooms, southern
+  annex and outdoor cooling/generator yard. The footprint is enlarged for
+  readable routes and combat, with a single playable ground level. See
+  [NORD_MAP.md](NORD_MAP.md) for the source-to-game mapping.
 - The first player chooses the map before joining. The host can switch maps
-  through **Esc → Operation → Start selected map**. This starts a new match for
+  through **Esc → Map selection → Start selected map**. This starts a new match for
   everyone, resetting scores and equipment while keeping connected players,
   teams and bot difficulty. Other players see the active map and join it.
 - Spawn courtyards block direct and wall-penetrating shots from opposing spawns,

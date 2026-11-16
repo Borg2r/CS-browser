@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const base = new URL(process.argv[2] || 'http://127.0.0.1:8088');
 assert.ok(['http:', 'https:'].includes(base.protocol));
-const ids = ['sirocco', 'dockyard', 'norheim', 'meridian'];
+const ids = ['sirocco', 'dockyard', 'norheim', 'meridian', 'nord_datacenter'];
 const clients = [];
 let wasm;
 
@@ -230,16 +230,16 @@ try {
       'player can walk away from the spawn');
     console.log(`PASS: ${metadata.name} resets match, retains humans/difficulty, and matches native/WASM collision and movement`);
   }
-  assert.equal(geometry.size, 4, 'all four maps have distinct geometry');
+  assert.equal(geometry.size, ids.length, 'every map has distinct geometry');
 
   before = mark();
   send(host, { t: 'set_map', map: 'missing-map' });
   send(host, { t: 'set_difficulty', difficulty: 'hard' }); // Ordered processing barrier.
-  await updated(before, 'meridian', host, false);
+  await updated(before, ids.at(-1), host, false);
   for (const client of active()) assert.equal(client.hellos.length, before.get(client).hello);
   before = mark();
   await close(host);
-  await updated(before, 'meridian', guest, false);
+  await updated(before, ids.at(-1), guest, false);
   before = mark();
   send(guest, { t: 'set_map', map: 'dockyard' });
   await updated(before, 'dockyard', guest, true);

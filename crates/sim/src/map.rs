@@ -13,10 +13,11 @@ pub enum MapId {
     Dockyard = 1,
     Norheim = 2,
     Meridian = 3,
+    NordDatacenter = 4,
 }
 
 impl MapId {
-    pub const ALL: [Self; 4] = [Self::Sirocco, Self::Dockyard, Self::Norheim, Self::Meridian];
+    pub const ALL: [Self; 5] = [Self::Sirocco, Self::Dockyard, Self::Norheim, Self::Meridian, Self::NordDatacenter];
 
     pub const fn index(self) -> u32 { self as u32 }
 
@@ -32,6 +33,7 @@ impl MapId {
         match self {
             Self::Sirocco => "sirocco", Self::Dockyard => "dockyard",
             Self::Norheim => "norheim", Self::Meridian => "meridian",
+            Self::NordDatacenter => "nord_datacenter",
         }
     }
 
@@ -39,6 +41,7 @@ impl MapId {
         match self {
             Self::Sirocco => "Sirocco", Self::Dockyard => "Dockyard",
             Self::Norheim => "Norheim", Self::Meridian => "Meridian",
+            Self::NordDatacenter => "NORD Datacenter",
         }
     }
 
@@ -46,6 +49,7 @@ impl MapId {
         match self {
             Self::Sirocco => "desert", Self::Dockyard => "industrial",
             Self::Norheim => "office", Self::Meridian => "ship",
+            Self::NordDatacenter => "datacenter",
         }
     }
 
@@ -55,6 +59,7 @@ impl MapId {
             Self::Dockyard => "The original container yard, with sheltered spawns and industrial lanes.",
             Self::Norheim => "A night shift through offices, meeting rooms and service corridors.",
             Self::Meridian => "A cargo ship with open deck routes, cargo stacks and a central superstructure.",
+            Self::NordDatacenter => "Server halls, cooling equipment and service routes adapted from the NORD datacenter model.",
         }
     }
 }
@@ -240,11 +245,13 @@ pub fn map_by_id(id: MapId) -> &'static Map {
     static DOCKYARD: OnceLock<Map> = OnceLock::new();
     static NORHEIM: OnceLock<Map> = OnceLock::new();
     static MERIDIAN: OnceLock<Map> = OnceLock::new();
+    static NORD_DATACENTER: OnceLock<Map> = OnceLock::new();
     match id {
         MapId::Sirocco => SIROCCO.get_or_init(crate::maps::sirocco::build),
         MapId::Dockyard => DOCKYARD.get_or_init(crate::maps::dockyard::build),
         MapId::Norheim => NORHEIM.get_or_init(crate::maps::norheim::build),
         MapId::Meridian => MERIDIAN.get_or_init(crate::maps::meridian::build),
+        MapId::NordDatacenter => NORD_DATACENTER.get_or_init(crate::maps::nord_datacenter::build),
     }
 }
 
@@ -301,12 +308,15 @@ mod tests {
 
     #[test]
     fn map_ids_are_stable_and_invalid_ids_do_not_fall_back() {
+        assert_eq!(MapId::ALL.map(|id| (id.index(), id.id())), [
+            (0, "sirocco"), (1, "dockyard"), (2, "norheim"), (3, "meridian"), (4, "nord_datacenter"),
+        ], "wire and WASM indices are an append-only contract");
         for id in MapId::ALL {
             assert_eq!(MapId::from_index(id.index()), Some(id));
             assert_eq!(MapId::from_id(id.id()), Some(id));
             assert_eq!(map_by_id(id).id, id);
         }
-        assert_eq!(MapId::from_index(4), None);
+        assert_eq!(MapId::from_index(MapId::ALL.len() as u32), None);
         assert_eq!(MapId::from_index(u32::MAX), None);
         assert_eq!(MapId::from_id("Sirocco"), None);
         assert_eq!(MapId::from_id("missing"), None);
