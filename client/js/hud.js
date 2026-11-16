@@ -186,7 +186,8 @@ export class Hud {
     $('wname').textContent = w.name + (me.rl > 0 ? ' — reloading' : '');
     const optic = this.optics?.find(o => o.index === me.optic);
     const aimLabel = optic ? `${optic.name.toUpperCase()} ${optic.zoom}× · HOLD RMB` : w.zoom >= 4 ? `${w.zoom}× SCOPE · HOLD RMB` : 'HOLD RMB TO AIM';
-    $('weapon-mode').textContent = w.dual ? 'LMB: LEFT  ·  RMB: RIGHT' : w.ads ? aimLabel : w.cls === 0 ? 'LMB: SLASH  ·  RMB: STAB' : '';
+    const triggerLabel = w.id === 'm14' ? 'SEMI-AUTO · CLICK LMB · ' : w.id === 'm16' ? 'AUTO · HOLD LMB · ' : '';
+    $('weapon-mode').textContent = w.dual ? 'LMB: LEFT  ·  RMB: RIGHT' : w.ads ? triggerLabel + aimLabel : w.cls === 0 ? 'LMB: SLASH  ·  RMB: STAB' : '';
     $('carry').textContent = [me.bm ? 'CHARGE [5]' : '', me.kit ? 'DEFUSE KIT' : '',
       me.nd[0] ? 'FRAG' : '', me.nd[1] ? `FLASH×${me.nd[1]}` : '', me.nd[2] ? 'SMOKE' : ''].filter(Boolean).join(' · ');
   }

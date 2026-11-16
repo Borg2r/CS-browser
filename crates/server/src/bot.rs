@@ -175,6 +175,8 @@ fn shop(g: &mut Game, i: usize) {
             list.push("longbow");
         } else if money >= 3300 && roll < 0.24 {
             list.push(["twin_mp7", "twin_lever"][g.rng.below(2)]);
+        } else if money >= 3900 && roll < 0.36 {
+            list.push(["m16", "m14"][g.rng.below(2)]);
         } else if money >= 4000 {
             list.push(if atk { "rook" } else { "sentinel" });
         } else if money >= 2900 {

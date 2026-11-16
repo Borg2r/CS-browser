@@ -28,6 +28,8 @@ const INFO = {
   acog:'A magnified scope for compatible single shotguns, SMGs, rifles and machine guns. Pistols cannot use it.',
   titan:'Heavy bolt-action with a fixed 12× scope. Lethal headshots; body hits deal 110 damage within 20 m and 94 from 50 m, even through armor.',
   kar98k:'Affordable bolt-action precision for long-range shots. Iron sights by default; accepts Red Dot or ACOG from Equipment.',
+  m16:'Automatic rifle with a 30-round magazine. Hold left mouse to fire and right mouse to aim. Accepts Red Dot or ACOG from Equipment.',
+  m14:'Semi-automatic only: one shot per left click. Powerful, accurate at range, with stronger recoil. Hold right mouse to aim; accepts Red Dot or ACOG.',
 };
 
 // Original lightweight illustrations: no image downloads or extra WebGL contexts.
@@ -60,6 +62,12 @@ function artwork(item) {
   } else if (item.id === 'kar98k') {
     // Slender unscoped sporting profile: continuous wood stock and bent bolt handle.
     shape = '<path d="M11 61 39 55 61 62 79 57H177V66H91L77 72 63 69 43 87H12Z" fill="#a77c50"/><path d="M73 49H117V59H73ZM115 50H230V55H115ZM104 43H113V51H104ZM217 43H223V51H217ZM169 50H175V67H169ZM8 61H13V88H8Z"/><path d="M95 57 103 66 109 66" fill="none" stroke="currentColor" stroke-width="4"/><circle cx="111" cy="67" r="5"/><path d="M80 69V77Q89 87 100 75V67M89 66 86 75" fill="none" stroke="currentColor" stroke-width="3"/><path d="M21 66 38 62 53 67M21 79 39 72M120 61H162" fill="none" stroke="#715235" stroke-width="2"/><path class="bu-etch" d="M78 54H99M179 53H211"/>';
+  } else if (item.id === 'm16') {
+    // Fixed stock, open carry handle, tapered triangular handguard and A-frame sight.
+    shape = '<path d="M10 49H58V61L16 81H10ZM55 46H120V65H96L89 93H76L81 66H55ZM117 44 177 49V60L117 65ZM177 51H226V57H177ZM226 48H236V60H226ZM102 65H120L129 94 111 100Z"/><path d="M68 46V30H109L116 46H108L104 37H76V46Z"/><path d="M179 51 186 31H190L198 51H192L188 40 185 51ZM186 27H191V34H186Z"/><path d="M94 66V77H106L112 65H106L102 72H100V66Z"/><path class="bu-etch" d="M17 55H48M62 53H106M125 50 170 53M125 59 170 56M132 49V60M145 50V59M158 51V58M113 71 120 91M79 78 76 88M230 49V59"/>';
+  } else if (item.id === 'm14') {
+    // Continuous walnut stock, ventilated top handguard and a straight box magazine.
+    shape = '<path d="M11 59 40 54 61 63 78 58H177V67H94L77 74 62 71 41 88H11Z" fill="#a77c50"/><path d="M71 49H119V60H71ZM118 47H172V57H118ZM171 50H226V56H171ZM223 47H235V60H223ZM181 57H218V63H181ZM106 67H127V92H105ZM8 58H14V90H8Z"/><path d="M75 43H87V51H75ZM77 38H84V46H77ZM215 42H223V51H215ZM212 39H215V48H212ZM223 39H226V48H223Z"/><path d="M79 70V78Q90 85 101 74V67M88 68 86 76M96 55 103 63H112" fill="none" stroke="currentColor" stroke-width="3"/><path class="bu-etch" d="M78 54H96M125 49V54M134 49V54M143 49V54M152 49V54M161 49V54M111 73V87M120 73V87M228 49V58"/><path d="M21 65 39 61 54 67M21 80 40 73M128 62H167" fill="none" stroke="#715235" stroke-width="2"/>';
   } else if (item.cls === 1) {
     const heavy = item.id.includes('mammoth');
     const pistol = `<path d="M53 39H${heavy ? 188 : 177}V55H139L132 66H105L99 101H73L83 58H53ZM110 58V71H127L134 57H127L122 66H117V58Z"/><path class="bu-etch" d="M61 48H163M89 65 82 92M151 41V53M158 41V53M165 41V53"/><path d="M64 35H71V40H64M155 35H164V40H155"/>`;
@@ -156,7 +164,7 @@ export class BuyMenu {
     if (!this.open) return false;
     if (n === 0) { if (this.category < 0) this.close(); else this.chooseCategory(-1); }
     else if (this.category < 0) { if (n >= 1 && n <= CATEGORIES.length) this.chooseCategory(n - 1); }
-    else { const item = this.items(this.category)[n - 1]; if (item) { this.selected = item.id; this.purchase(item.id); } }
+    else if (n >= 1 && n <= 9) { const item = this.items(this.category)[n - 1]; if (item) { this.selected = item.id; this.purchase(item.id); } }
     return true;
   }
   purchase(id) {
@@ -200,7 +208,7 @@ export class BuyMenu {
       <nav class="bu-tabs" aria-label="Buy categories">${CATEGORIES.map((cat, i) => `<button data-cat="${i}" class="${this.category === i ? 'bu-active' : ''}" aria-pressed="${this.category === i}"><kbd>${i + 1}</kbd>${cat.name}</button>`).join('')}</nav>
       <div class="bu-body"><section class="bu-shop"><div class="bu-section-heading"><div><h3>${this.category < 0 ? 'Build your loadout' : CATEGORIES[this.category].name}</h3><p>${this.category < 0 ? 'Choose a category to browse your arsenal.' : CATEGORIES[this.category].hint + ' · click an item to purchase'}</p></div>${this.category >= 0 ? '<button class="bu-back" data-action="back"><kbd>0</kbd> Categories</button>' : ''}</div><div class="bu-grid ${this.category < 0 ? 'bu-category-grid' : this.items(this.category).length > 6 ? 'bu-many-items' : ''}">${this.category < 0 ? this.categoryCards() : this.items(this.category).map((item, i) => this.card(item, i)).join('')}</div></section><aside class="bu-detail" aria-label="Item details"></aside></div>
       <div class="bu-loadout"><span class="bu-loadout-label">YOUR LOADOUT</span>${this.loadout()}</div>
-      <footer class="bu-footer"><span class="bu-zone ${me.cb ? 'bu-zone-open' : ''}"><i></i>${me.cb ? 'IN BUY ZONE' : 'BUYING CLOSED'}<span class="bu-time">${timerText}</span></span><span class="bu-notice" role="status">${esc(this.notice)}</span><span class="bu-shortcuts"><kbd>${this.category < 0 ? '1–6' : '1–' + this.items(this.category).length}</kbd> ${this.category < 0 ? 'category' : 'buy'} <kbd>0</kbd> ${this.category < 0 ? 'close' : 'back'} <kbd>B</kbd> close</span></footer>`;
+      <footer class="bu-footer"><span class="bu-zone ${me.cb ? 'bu-zone-open' : ''}"><i></i>${me.cb ? 'IN BUY ZONE' : 'BUYING CLOSED'}<span class="bu-time">${timerText}</span></span><span class="bu-notice" role="status">${esc(this.notice)}</span><span class="bu-shortcuts"><kbd>${this.category < 0 ? '1–6' : '1–' + Math.min(9, this.items(this.category).length)}</kbd> ${this.category < 0 ? 'category' : 'buy'} <kbd>0</kbd> ${this.category < 0 ? 'close' : 'back'} <kbd>B</kbd> close</span></footer>`;
     this.timerElement = this.el.querySelector('.bu-time'); this.timerText = timerText;
     this.renderDetail();
     if (focusKey) this.el.querySelector(focusKey)?.focus({preventScroll:true});
@@ -213,14 +221,15 @@ export class BuyMenu {
   }
   card(item, i) {
     const state = this.state(item);
-    return `<button class="bu-card ${this.selected === item.id ? 'bu-selected' : ''} ${state.owned ? 'bu-owned' : ''} ${!state.affordable ? 'bu-unaffordable' : ''}" data-item="${item.id}" aria-disabled="${state.disabled}" aria-label="${esc(item.name)}, ${money(state.price)}, ${esc(state.status)}"><div class="bu-card-top"><kbd>${i + 1}</kbd><span class="bu-card-price">${money(state.price)}</span></div>${artwork(item)}<strong>${esc(item.name)}</strong><span class="bu-card-status">${state.owned ? '✓ ' : ''}${esc(state.status)}${item.dual && !state.owned ? ' · AKIMBO' : ''}</span></button>`;
+    const shortcut = i < 9 ? `<kbd>${i + 1}</kbd>` : '<span>CLICK TO BUY</span>';
+    return `<button class="bu-card ${this.selected === item.id ? 'bu-selected' : ''} ${state.owned ? 'bu-owned' : ''} ${!state.affordable ? 'bu-unaffordable' : ''}" data-item="${item.id}" aria-disabled="${state.disabled}" aria-label="${esc(item.name)}, ${money(state.price)}, ${esc(state.status)}"><div class="bu-card-top">${shortcut}<span class="bu-card-price">${money(state.price)}</span></div>${artwork(item)}<strong>${esc(item.name)}</strong><span class="bu-card-status">${state.owned ? '✓ ' : ''}${esc(state.status)}${item.dual && !state.owned ? ' · AKIMBO' : ''}</span></button>`;
   }
   renderDetail() {
     const panel = this.el.querySelector('.bu-detail'), item = this.item(this.selected);
     if (!panel || !item) return;
     const state = this.state(item), gun = item.mag > 0;
     const desc = INFO[item.id] || (item.dual ? 'Independent triggers: left mouse fires the left weapon; right mouse fires the right. No aiming mode.' : item.cls === 5 ? 'Precision at range. Right mouse aims through the scope. Settle your movement before taking the shot.' : item.cls === 2 ? 'Built for close quarters. Damage is shown per pellet; your spread is most effective up close.' : item.cls === 6 ? 'Sustained fire and a deep magazine. Control your bursts and plan around the longer reload.' : item.auto ? 'Automatic fire. Right mouse aims down sights. Short bursts help control recoil at range.' : 'A reliable sidearm. Click to fire and hold right mouse to aim down sights.');
-    const type = item.attachment ? 'WEAPON OPTIC' : item.id === 'titan' ? 'HEAVY BOLT-ACTION RIFLE' : item.boltAction ? 'BOLT-ACTION RIFLE' : TYPE[item.cls] || 'TACTICAL EQUIPMENT';
+    const type = item.attachment ? 'WEAPON OPTIC' : item.id === 'titan' ? 'HEAVY BOLT-ACTION RIFLE' : item.boltAction ? 'BOLT-ACTION RIFLE' : item.cls === 4 && !item.auto ? 'SEMI-AUTOMATIC RIFLE' : TYPE[item.cls] || 'TACTICAL EQUIPMENT';
     const stat = (name, value, ratio) => `<div class="bu-stat"><div><span>${name}</span><b>${value}</b></div><div class="bu-meter"><i style="width:${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%"></i></div></div>`;
     const stats = item.attachment ? `<div class="bu-gear-benefit bu-optic-benefit"><span>MAGNIFICATION</span><strong>${item.zoom}×</strong><small>Mount target: ${esc(state.target?.mag ? state.target.name : 'No firearm equipped')}<br>Currently fitted: ${esc(state.mounted?.name || 'No purchased optic')}</small></div>` : gun
       ? stat(item.cls === 2 ? 'Damage / pellet' : 'Base damage', item.dmg, item.dmg / 115)

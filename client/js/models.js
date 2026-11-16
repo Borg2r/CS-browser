@@ -3,6 +3,8 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { buildTitan } from './titan.js';
 import { buildKar98k } from './kar98k.js';
+import { buildM16 } from './m16.js';
+import { buildM14 } from './m14.js';
 
 const bevelShape = new THREE.Shape();
 bevelShape.moveTo(-.46, -.46); bevelShape.lineTo(.46, -.46); bevelShape.lineTo(.46, .46); bevelShape.lineTo(-.46, .46); bevelShape.closePath();
@@ -100,10 +102,10 @@ function lathe(p, center, length, radius, count = 8) {
   for (let i = 0; i < count; i++) p.tube(MAT.black, radius, .0015, center[0], center[1], center[2] - length / 2 + length * i / (count - 1));
 }
 
-function opticModel(type, y, z = -.10, pistolMount = false) {
+function opticModel(type, y, z = -.10, pistolMount = false, mountBase) {
   const p = new Parts(), g = new THREE.Group(); g.name = type === 1 ? 'red_dot' : 'acog';
   const body = mat(0x273238, .48, .33), edge = mat(0x76817d, .55, .36);
-  const base = pistolMount ? .088 : .08;
+  const base = mountBase ?? (pistolMount ? .088 : .08);
   p.box(body, .052, .012, type === 1 ? .07 : .13, 0, base + .006, z);
   p.box(edge, .038, Math.max(.008,y - base - .035), .027, 0, (base + y - .027) / 2, z);
   for (const side of [-1,1]) {
@@ -480,7 +482,7 @@ function equipment(w) {
 
 export function gunModel(weapon) {
   const w = withOptic(weapon), key = weaponModelKey(w);
-  if (!templates.has(key)) templates.set(key, w.id === 'kar98k' ? buildKar98k(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, marking }) : w.id === 'titan' ? buildTitan(w, { Parts, MAT, mat, rails, marking }) : w.id === 'twin_mp7' ? mp7(w) : w.id === 'twin_lever' ? leverShotgun(w) : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
+  if (!templates.has(key)) templates.set(key, w.id === 'm16' ? buildM16(w, { Parts, MAT, mat, screw, opticModel, marking }) : w.id === 'm14' ? buildM14(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, marking }) : w.id === 'kar98k' ? buildKar98k(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, marking }) : w.id === 'titan' ? buildTitan(w, { Parts, MAT, mat, rails, marking }) : w.id === 'twin_mp7' ? mp7(w) : w.id === 'twin_lever' ? leverShotgun(w) : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
   return templates.get(key).clone(true);
 }
 

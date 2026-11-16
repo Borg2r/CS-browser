@@ -2284,6 +2284,124 @@ mod tests {
     }
 
     #[test]
+    fn m16_and_m14_buy_for_both_teams_and_publish_distinct_firing_modes() {
+        for (id, index, price, magazine, reserve, automatic) in [
+            ("m16", 33, 2800, 30, 90, true), ("m14", 34, 2900, 20, 80, false),
+        ] {
+            assert_eq!(by_id(id), Some(index), "new rifles append without changing existing indices");
+            for team in [ATK, DEF] {
+                let mut g = weapon_game("kestrel");
+                let p = &mut g.players[0];
+                p.team = team;
+                let point = g.map.spawns[(team - 1) as usize][0];
+                p.st.pos = [point[0], 0.01, point[1]];
+                p.money = price - 1;
+                assert!(!g.buy(0, id));
+                assert_eq!(g.players[0].money, price - 1);
+                assert!(g.players[0].prim.is_none());
+                g.players[0].money = price;
+                assert!(g.buy(0, id));
+                let p = &g.players[0];
+                assert_eq!(p.money, 0);
+                assert_eq!(p.slot, 0);
+                assert_eq!(p.sec.unwrap().w, PISTOL_ATK);
+                let gun = p.gun().unwrap();
+                assert_eq!((gun.w, gun.ammo, gun.reserve, gun.optic), (index, magazine, reserve, 0));
+                let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
+                let def = &hello["weapons"][index];
+                assert_eq!(def["id"], id); assert_eq!(def["cls"], C_RIFLE);
+                assert_eq!(def["slot"], 0); assert_eq!(def["team"], 0);
+                assert_eq!(def["auto"], automatic); assert_eq!(def["ads"], true);
+                assert_eq!(def["boltAction"], false); assert_eq!(def["dual"], false);
+                assert_eq!(def["zoom"], json!(1.35_f32)); assert_eq!(def["optics"], json!([1, 2]));
+            }
+        }
+    }
+
+    #[test]
+    fn m14_requires_a_new_trigger_press_and_never_queues_an_early_click() {
+        for optic in [0, 1, 2] {
+            let mut g = weapon_game("m14");
+            g.players[0].gun_mut().unwrap().optic = optic;
+            for _ in 0..30 { input(&mut g, B_FIRE2, TICK); }
+            assert_eq!(g.players[0].gun().unwrap().ammo, 20, "right mouse only aims");
+            assert_eq!(g.players[0].scoped, 1);
+            for _ in 0..60 { input(&mut g, B_FIRE | B_FIRE2, TICK); }
+            assert_eq!(g.players[0].gun().unwrap().ammo, 19, "holding M14 fire must produce only one shot");
+            input(&mut g, B_FIRE2, TICK);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].gun().unwrap().ammo, 18);
+            input(&mut g, B_FIRE2, TICK);
+            for _ in 0..30 { input(&mut g, B_FIRE | B_FIRE2, TICK); }
+            assert_eq!(g.players[0].gun().unwrap().ammo, 18, "an early click cannot bypass cooldown or fire later while held");
+            input(&mut g, B_FIRE2, TICK);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].gun().unwrap().ammo, 17);
+            assert_eq!(shot_hands(&g), [1, 1, 1]);
+            assert_eq!(g.players[0].scoped, 1, "semi-auto fire keeps the sight raised");
+            input(&mut g, B_RELOAD, 0.3);
+            assert!(g.players[0].reload_t > 0.0);
+            input(&mut g, B_FIRE | B_FIRE2, 3.1);
+            assert_eq!(g.players[0].gun().unwrap().ammo, 20);
+            for _ in 0..30 { input(&mut g, B_FIRE | B_FIRE2, TICK); }
+            assert_eq!(g.players[0].gun().unwrap().ammo, 20, "holding fire through reload does not create a new trigger press");
+            input(&mut g, B_FIRE2, TICK);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].gun().unwrap().ammo, 19);
+            assert_eq!(shot_hands(&g), [1, 1, 1, 1]);
+        }
+    }
+
+    #[test]
+    fn m16_repeats_while_held_and_stops_when_the_trigger_is_released() {
+        let mut g = weapon_game("m16");
+        for _ in 0..30 { input(&mut g, B_FIRE2, TICK); }
+        assert_eq!(g.players[0].gun().unwrap().ammo, 30, "right mouse only aims");
+        for _ in 0..30 { input(&mut g, B_FIRE | B_FIRE2, TICK); }
+        assert_eq!(g.players[0].gun().unwrap().ammo, 25, "automatic fire observes its 90 ms interval at 60 Hz");
+        assert_eq!(shot_hands(&g), [1; 5]);
+        for _ in 0..30 { input(&mut g, B_FIRE2, TICK); }
+        assert_eq!(g.players[0].gun().unwrap().ammo, 25);
+        assert_eq!(g.players[0].scoped, 1);
+        input(&mut g, 0, TICK);
+        assert_eq!(g.players[0].scoped, 0);
+    }
+
+    #[test]
+    fn new_rifles_reload_and_drop_with_their_optics_and_remaining_ammunition() {
+        for id in ["m16", "m14"] {
+            let mut g = weapon_game(id);
+            g.players[0].money = 1700;
+            assert!(g.buy(0, "red_dot"));
+            assert_eq!(g.players[0].gun().unwrap().effective_zoom(), 1.5);
+            assert!(g.buy(0, "acog"));
+            assert_eq!(g.players[0].money, 0);
+            assert_eq!(g.players[0].gun().unwrap().effective_zoom(), 4.0);
+            let gun = g.players[0].gun_mut().unwrap();
+            gun.ammo = 3; gun.reserve = 7;
+            input(&mut g, B_RELOAD, 0.4);
+            assert!(g.players[0].reload_t > 0.0);
+            input(&mut g, B_FIRE | B_FIRE2, TICK);
+            assert_eq!(g.players[0].gun().unwrap().ammo, 3, "reload blocks both firing and aiming");
+            assert_eq!(g.players[0].scoped, 0);
+            input(&mut g, 0, 4.0);
+            let gun = g.players[0].gun().unwrap();
+            assert_eq!((gun.ammo, gun.reserve, gun.optic), (10, 0, 2), "limited reserve cannot create ammo or lose the optic");
+            assert!(shot_hands(&g).is_empty());
+            g.drop_active(0);
+            assert_eq!(g.items.len(), 1);
+            assert_eq!((g.items[0].ammo, g.items[0].reserve, g.items[0].optic), (10, 0, 2));
+            g.players[0].st.pos = g.items[0].pos;
+            g.time += 2.0;
+            g.pickups();
+            let gun = g.players[0].gun().unwrap();
+            assert_eq!(WEAPONS[gun.w].id, id);
+            assert_eq!((gun.ammo, gun.reserve, gun.optic), (10, 0, 2));
+            assert!(g.items.is_empty());
+        }
+    }
+
+    #[test]
     fn optics_purchases_obey_held_weapon_compatibility_budget_and_replacement_prices() {
         for def in &WEAPONS {
             for optic in &OPTICS {
@@ -2947,7 +3065,7 @@ mod tests {
 
     #[test]
     fn ordinary_guns_aim_while_held_and_release_or_reload_exits_aim() {
-        for id in ["kestrel", "sentinel", "longbow"] {
+        for id in ["kestrel", "sentinel", "longbow", "m16", "m14"] {
             let mut g = weapon_game(id);
             let speed = g.players[0].max_speed();
             let ammo = g.players[0].gun().unwrap().ammo;
@@ -2968,7 +3086,7 @@ mod tests {
 
     #[test]
     fn freeze_allows_aiming_but_neither_weapon_fires() {
-        for id in ["kestrel", "twin_kestrel", "titan"] {
+        for id in ["kestrel", "twin_kestrel", "titan", "m16", "m14"] {
             let mut g = weapon_game(id);
             g.players[0].cooldown = 0.35;
             g.phase = Phase::Freeze;
@@ -2990,7 +3108,7 @@ mod tests {
         let mut g = weapon_game("twin_kestrel");
         let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
         let definitions = hello["weapons"].as_array().unwrap();
-        assert_eq!(definitions.len(), 33);
+        assert_eq!(definitions.len(), 35);
         for (id, class, capacity, pellets, automatic) in [("twin_mp7", C_SMG, 80, 1, true), ("twin_lever", C_SHOTGUN, 10, 7, false)] {
             let def = definitions.iter().find(|w| w["id"] == id).unwrap();
             assert_eq!(def["cls"], class); assert_eq!(def["slot"], 0); assert_eq!(def["team"], 0);

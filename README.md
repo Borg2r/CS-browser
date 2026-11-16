@@ -74,7 +74,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 - 30 rounds: sides swap at half-time after 15, first team to 16 wins.
 - Fixed spray patterns, bullet penetration through thin cover, fall damage,
   slow-down when hit, hold-to-aim iron sights and optics, knife slash / stab / backstab.
-- 28 firearms (pistols, four akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
+- 30 firearms (pistols, four akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
   knife, frag / flash / smoke grenades, armour, helmet and defuse kit.
 - Economy with kill rewards and round win / loss bonuses. The CS-inspired buy
   menu has six categories, weapon illustrations, prices and statistics, a budget
@@ -123,6 +123,11 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   Red Dot and ACOG from Equipment. Reloading takes 3.8 seconds.
 - **P9S** is the renamed Kestrel 9 starter pistol; **QK-9mm** is the renamed
   Cricket SD, the least expensive SMG. Their prices and weapon stats are unchanged.
+- **M16 and M14:** both teams can buy these under Rifles. The M16 ($2,800) has
+  automatic fire and a 30-round magazine. The M14 ($2,900) is semi-automatic only:
+  one shot per left click, with a 20-round magazine and stronger individual hits.
+  Both have their own detailed models, iron sights and support for Red Dot/ACOG.
+  Rifle cards beyond the first nine are purchased by clicking; **0** stays Back.
 
 ## Controls
 

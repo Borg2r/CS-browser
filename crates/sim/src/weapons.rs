@@ -126,7 +126,7 @@ pub const BOMB: usize = 4;
 pub const PISTOL_ATK: usize = 5;
 pub const PISTOL_DEF: usize = 6;
 
-pub static WEAPONS: [Weapon; 33] = [
+pub static WEAPONS: [Weapon; 35] = [
     with(gun("knife", "Combat Knife", C_KNIFE, 0, 0, 45.0, 0.45, 0, 0, 0.0, true, 0.0, 0.0, 0.85, 6.35), 1.0, 1500, 1, 0.0),
     gun("frag", "Frag Grenade", C_FRAG, 0, 300, 100.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.6, 6.2),
     gun("flash", "Flashbang", C_FLASH, 0, 200, 0.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.0, 6.2),
@@ -168,6 +168,8 @@ pub static WEAPONS: [Weapon; 33] = [
     akimbo(with(gun("twin_lever", "Twin Lever-Action", C_SHOTGUN, 0, 2400, 17.0, 0.85, 10, 40, 4.0, false, 0.065, 0.055, 0.50, 5.65), 0.68, 900, 7, 0.0)),
     bolt_action(with(gun("titan", "Titan .50", C_SNIPER, 0, 6200, 110.0, 2.3, 5, 20, 4.8, false, 0.00015, 0.0, 1.0, 4.5), 1.0, 100, 1, 12.0)),
     bolt_action(with(gun("kar98k", "Kar98k", C_RIFLE, 0, 1500, 74.0, 1.8, 5, 35, 3.8, false, 0.0003, 0.045, 0.85, 5.5), 0.995, 300, 1, 1.35)),
+    with(gun("m16", "M16", C_RIFLE, 0, 2800, 31.0, 0.09, 30, 90, 2.8, true, 0.0045, 0.0085, 0.72, 5.75), 0.96, 300, 1, 1.35),
+    with(gun("m14", "M14", C_RIFLE, 0, 2900, 57.0, 0.24, 20, 80, 3.0, false, 0.0013, 0.025, 0.85, 5.55), 0.985, 300, 1, 1.35),
 ];
 
 pub fn by_id(id: &str) -> Option<usize> {
