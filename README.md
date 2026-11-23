@@ -85,7 +85,11 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 - Spawn areas block direct and wall-penetrating shots from opposing spawns,
   including jumping sightlines. Bots can reach both objectives on every map.
 - Fifteen uploaded weapon models with original textures, normal maps and
-  material detail, plus procedural models for the remaining weapons. M4A4 and
+  material detail, plus sixteen individually authored firearm models with shaped
+  receivers, open barrels/ports and shared metal, polymer and wood finishes.
+  Their moving slides, bolts, pumps, levers and magazines follow each weapon's
+  action; Volt 90's top magazine lifts upward during reloads. See
+  [AUTHORED_WEAPONS.md](AUTHORED_WEAPONS.md). M4A4 and
   single MP7 are separate shop choices; the uploaded MP7 also serves the dual pair.
 - Eight original textured CS 1.6 operators rotate across the teams: Arctic,
   Terror, Leet and Guerilla attackers; Urban, GIGN, SAS and GSG9 defenders.

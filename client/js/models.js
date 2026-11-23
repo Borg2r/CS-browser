@@ -5,6 +5,11 @@ import { buildTitan } from './titan.js';
 import { buildKar98k } from './kar98k.js';
 import { buildM16 } from './m16.js';
 import { buildM14 } from './m14.js';
+import { buildDrifter } from './drifter.js';
+import { buildDetailedPistol } from './detailed-pistols.js';
+import { buildDetailedTactical } from './detailed-tactical.js';
+import { buildDetailedShotgun } from './detailed-shotguns.js';
+import { hollowTube } from './weapon-detail.js';
 import { cloneImportedWeapon, importedWeaponReady } from './imported-weapons.js';
 
 const bevelShape = new THREE.Shape();
@@ -124,7 +129,7 @@ function opticModel(type, y, z = -.10, pistolMount = false, mountBase) {
     p.box(mat(0xb44a35,.12,.5),.006,.002,.012,0,y+.034,z-.005);
   } else {
     // Compact prism body, large objective bell and fiber-optic light collector.
-    p.tube(body,.028,.134,0,y,z-.015);
+    p.add(hollowTube(.028,.024,.134,28),body,[1,1,1],[0,y,z-.015]);
     for (const dz of [-.091,.065]) p.add('ring',body,[.034,.034,.027],[0,y,z+dz]);
     p.box(body,.065,.039,.077,0,y-.023,z-.012);
     p.box(edge,.008,.008,.065,-.034,y-.016,z-.01);
@@ -352,108 +357,6 @@ function mp7(w) {
   return g;
 }
 
-let walnutMaterial;
-function walnutFinish() {
-  if (!walnutMaterial && typeof document === 'undefined') return mat(0x805235,.06,.48);
-  if (!walnutMaterial) {
-    const canvas = document.createElement('canvas'); canvas.width=512;canvas.height=256;
-    const ctx=canvas.getContext('2d');ctx.fillStyle='#704329';ctx.fillRect(0,0,512,256);
-    for(let row=0;row<150;row++){
-      ctx.strokeStyle=row%3===0?'rgba(38,18,10,.32)':'rgba(194,137,78,.15)';ctx.lineWidth=row%7===0?1.4:.55;
-      ctx.beginPath();
-      for(let x=0;x<=512;x+=8){const y=row*1.9+Math.sin(x*.017+row*.25)*3+Math.sin(x*.043+row)*1.2;if(!x)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.stroke();
-    }
-    for(let i=0;i<450;i++){ctx.fillStyle='rgba(35,17,8,.14)';ctx.fillRect((i*197)%512,(i*67)%256,1,2);}
-    const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;
-    walnutMaterial=new THREE.MeshStandardMaterial({map:texture,color:0xe4c4a0,metalness:.06,roughness:.48});
-  }
-  return walnutMaterial;
-}
-function receiverProfiles() {
-  if (primitive.m1887Receiver) return;
-  const profile=new THREE.Shape();
-  profile.moveTo(-.086,-.049);profile.lineTo(.108,-.049);
-  profile.quadraticCurveTo(.14,-.04,.14,.013);profile.lineTo(.14,.065);
-  profile.quadraticCurveTo(.13,.105,.064,.12);profile.lineTo(-.006,.12);
-  profile.quadraticCurveTo(-.084,.12,-.105,.056);profile.lineTo(-.104,-.017);
-  profile.quadraticCurveTo(-.102,-.045,-.086,-.049);profile.closePath();
-  const create=(shape,width)=>{const g=new THREE.ExtrudeGeometry(shape,{depth:width,bevelEnabled:true,bevelThickness:.0025,bevelSize:.0025,bevelSegments:2,steps:1,curveSegments:12});g.translate(0,0,-width/2);g.rotateY(Math.PI/2);return g;};
-  primitive.m1887Receiver=create(profile,.074);
-  const breech=new THREE.Shape();breech.moveTo(-.05,-.025);breech.lineTo(.075,-.025);breech.lineTo(.075,.016);
-  breech.quadraticCurveTo(.044,.071,-.013,.071);breech.quadraticCurveTo(-.058,.063,-.05,-.025);breech.closePath();
-  primitive.m1887Breech=create(breech,.055);
-  const grip=new THREE.Shape();grip.moveTo(-.065,.022);
-  grip.bezierCurveTo(-.112,.028,-.155,.003,-.176,-.03);
-  grip.bezierCurveTo(-.187,-.063,-.203,-.093,-.236,-.108);
-  grip.bezierCurveTo(-.253,-.117,-.243,-.135,-.224,-.14);
-  grip.bezierCurveTo(-.193,-.15,-.163,-.122,-.145,-.086);
-  grip.bezierCurveTo(-.129,-.053,-.117,-.024,-.065,-.02);grip.closePath();
-  primitive.m1887Grip=create(grip,.059);
-}
-// M1887 silhouette: tall, rounded receiver with a rolling top breech, a short
-// barrel above the magazine tube, a bird's-head walnut grip and large loop.
-function leverShotgun(w) {
-  receiverProfiles();
-  const p=new Parts(), action=new Parts(), lever=new Parts();
-  const wood=walnutFinish(), blued=mat(0x4b555b,.42,.36), worn=mat(0x838c88,.52,.35);
-  for(const side of [-1,1]){
-    p.add('m1887Receiver',blued,[.12,1,1],[side*.033,0,-.02]);
-    // Curved sideplate outline and carefully positioned action screws.
-    p.add('m1887Receiver',worn,[.016,.84,.92],[side*.039,0,-.014]);
-    p.add('m1887Receiver',blued,[.018,.805,.885],[side*.040,.002,-.014]);
-    for(const [y,z,r] of [[.055,.045,.0045],[-.022,-.107,.004],[.023,-.065,.0032],[.008,.061,.0035]])screw(p,side*.042,y,z,r);
-    p.box(MAT.black,.0015,.003,.052,side*.043,.061,-.078);
-    p.box(worn,.0015,.001,.041,side*.043,.058,-.078);
-  }
-  p.box(blued,.061,.028,.214,0,-.034,-.02);
-  p.add('sphere',blued,[.034,.066,.041],[0,.017,.058]);
-  // Deep black top-loading port stays visible as the rolling breech opens.
-  p.box(MAT.black,.058,.012,.12,0,.055,-.036);
-  p.box(worn,.005,.013,.106,-.029,.064,-.044);
-  p.box(worn,.005,.013,.106,.029,.064,-.044);
-  action.add('m1887Breech',blued,[1,1,1],[0,.033,-.014]);
-  action.box(worn,.012,.003,.065,.019,.104,-.043);
-  action.box(MAT.black,.005,.008,.034,-.022,.087,-.054);
-  // Large bore and parallel tube, with a period-correct bead instead of rails.
-  p.tube(blued,.0235,.36,0,.074,-.32);
-  p.tube(worn,.0245,.014,0,.074,-.506);
-  p.tube(MAT.black,.0185,.017,0,.074,-.516);
-  p.tube(blued,.0175,.335,0,.011,-.309);
-  p.tube(worn,.0182,.012,0,.011,-.482);
-  p.bead(MAT.brass,0,.101,-.481,.0037);
-  p.box(blued,.009,.005,.012,0,.097,-.481);
-  for(const z of [-.171,-.414]){
-    p.add('ring',worn,[.025,.026,.032],[0,.073,z]);
-    p.box(blued,.073,.075,.012,0,.035,z);
-  }
-  // Rounded walnut fore-end, not the squared pump handguard of a modern gun.
-  p.add('sphere',wood,[.038,.035,.135],[0,.009,-.297]);
-  p.box(wood,.068,.045,.208,0,.013,-.297);
-  p.box(worn,.067,.003,.008,0,-.012,-.406);
-  p.box(worn,.065,.003,.008,0,-.012,-.188);
-  // Sawn-off stock with a curved wrist and bird's-head butt.
-  p.add('m1887Grip',wood,[1,1,1]);
-  p.box(blued,.056,.005,.045,0,-.136,.221,-.22);
-  for(const side of [-1,1])screw(p,side*.032,-.048,.163,.004);
-  p.box(blued,.012,.034,.062,0,-.014,.09,-.3);
-  // Exposed hammer, extractor and trigger give the action its old mechanism.
-  p.box(blued,.019,.034,.018,0,.088,.071,-.4);
-  p.box(worn,.026,.006,.021,0,.105,.078,-.4);
-  for(let i=0;i<4;i++)p.box(MAT.black,.024,.002,.0015,0,.108+i*.0004,.07+i*.0035,-.4);
-  p.box(worn,.007,.036,.010,0,-.047,.008,.22);
-  lever.add('ring',blued,[.082,.054,.026],[0,-.059,.079],[0,Math.PI/2,0]);
-  lever.box(blued,.013,.045,.016,0,-.021,.006,-.28);
-  lever.box(worn,.013,.005,.073,0,-.111,.077);
-  p.add('cylinder',worn,[.009,.075,.009],[0,-.018,-.102],[0,0,Math.PI/2]);
-  // Small stamped maker marks suit a historic receiver; no modern tactical plate.
-  const engraving={...w,name:'MODEL 1887  ·  12 GA'};marking(engraving,p,.0431,.026,-.013,.10);
-  const g=p.build(),loop=lever.build('lever'),breech=action.build('bolt');
-  loop.position.set(0,-.018,-.102);breech.position.set(0,.015,.025);breech.userData.rest=[0,.015,.025];
-  g.add(loop,breech);
-  g.userData={muzzle:[0,.074,-.526],sightY:.105,length:.78,dualHip:[.25,-.16,-.56],leverAction:true,rollingBreech:true};
-  return g;
-}
-
 function equipment(w) {
   const p = new Parts(), cls = w.cls;
   if (cls === 0) {
@@ -497,7 +400,19 @@ export function gunModel(weapon, detail = 'world') {
       templates.set(key, imported);
     }
   }
-  if (!templates.has(key)) templates.set(key, w.id === 'm16' ? buildM16(w, { Parts, MAT, mat, screw, opticModel, marking }) : w.id === 'm14' ? buildM14(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, marking }) : w.id === 'kar98k' ? buildKar98k(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, marking }) : w.id === 'titan' ? buildTitan(w, { Parts, MAT, mat, rails, marking }) : w.id === 'twin_mp7' ? mp7(w) : w.id === 'twin_lever' ? leverShotgun(w) : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
+  if (!templates.has(key)) {
+    const api = { Parts, MAT, mat, screw, opticModel, marking, rails };
+    const builders = {
+      kestrel: buildDetailedPistol, bulwark: buildDetailedPistol, viper: buildDetailedPistol,
+      cricket: buildDetailedTactical, cinder: buildDetailedTactical, volt: buildDetailedTactical,
+      sabre: buildDetailedTactical, bastion: buildDetailedTactical,
+      ram: buildDetailedShotgun, tempest: buildDetailedShotgun, twin_lever: buildDetailedShotgun,
+      m16: buildM16, m14: buildM14, kar98k: buildKar98k, titan: buildTitan, drifter: buildDrifter,
+    };
+    const builder = builders[w.id];
+    templates.set(key, builder ? builder(w, api) : w.id === 'twin_mp7' ? mp7(w)
+      : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
+  }
   return templates.get(key).clone(true);
 }
 

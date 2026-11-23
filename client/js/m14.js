@@ -1,6 +1,7 @@
 // Original M14 silhouette: continuous walnut furniture, exposed receiver and
 // gas-operated action. Only the bolt/operating rod and magazine move.
 import * as THREE from '../vendor/three.module.min.js';
+import { profile, hollowTube, turned, finish } from './weapon-detail.js';
 
 let stockProfile;
 function stockGeometry() {
@@ -35,37 +36,40 @@ function stockGeometry() {
   return stockProfile = g;
 }
 
-export function buildM14(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, marking }) {
+export function buildM14(w, { Parts, MAT, mat, screw, opticModel, marking }) {
   const body = new Parts(), magazine = new Parts(), action = new Parts();
-  const wood = walnutFinish(), steel = mat(0x435057,.48,.43);
-  const phosphate = mat(0x2c393d,.32,.53), worn = mat(0x85918f,.51,.36);
-  const handguard = mat(0x674836,.12,.62);
+  const wood = finish('wood',0x805234), steel = finish('steel',0x48585c);
+  const phosphate = finish('blued',0x303b3c), worn = finish('steel',0x7d8987);
+  const handguard = finish('polymer',0x573e2e);
   body.add(stockGeometry(), wood, [1,1,1]);
 
-  // Open-top receiver. Thin sidewalls keep the sliding bolt visible.
-  body.box(phosphate,.073,.051,.227,0,.023,-.089);
-  body.box(MAT.black,.061,.011,.161,0,.053,-.079);
+  // Machined receiver sidewalls and an open top above the actual bolt. The
+  // visible opening continues into the magazine well when the bolt retracts.
+  const receiver=[[-.209,.007],[-.210,.052],[-.194,.069],[-.020,.069],[.015,.052],[.056,.051],[.056,.008]];
   for (const side of [-1,1]) {
-    body.box(steel,.009,.033,.187,side*.035,.052,-.084);
-    body.box(worn,.003,.004,.176,side*.04,.068,-.084);
+    body.add(profile(receiver,.008,.0015),steel,[1,1,1],[side*.034,0,0]);
+    body.box(worn,.0018,.003,.160,side*.039,.067,-.091);
     for (const z of [-.182,-.022]) screw(body,side*.041,.015,z,.004);
-    body.box(phosphate,.003,.010,.112,side*.04,-.014,-.115);
+    body.add(profile([[-.19,.009],[-.039,.009],[-.029,-.016],[-.189,-.016]],.002,.001),phosphate,[1,1,1],[side*.038,0,0]);
   }
-  body.tube(steel,.031,.036,0,.043,-.215);
-  body.box(phosphate,.065,.048,.040,0,.036,.038);
-  body.box(steel,.055,.009,.043,0,.067,.037);
+  body.box(phosphate,.060,.010,.220,0,.006,-.081);
+  body.add(turned([[-.235,.030],[-.220,.030],[-.215,.027],[-.199,.027]]),steel,[1,1,1],[0,.043,0]);
+  body.add(profile([[.013,.008],[.013,.056],[.025,.067],[.055,.067],[.063,.047],[.061,.008]],.060,.002),phosphate,[1,1,1]);
 
-  // Long ventilated upper handguard over the barrel, separate from the stock.
-  body.tube(steel,.0148,.673,0,.044,-.554);
-  body.add('sphere',handguard,[.035,.028,.187],[0,.031,-.407]);
-  body.box(handguard,.060,.029,.345,0,.03,-.411);
-  for (const side of [-1,1]) {
-    for (let i=0;i<9;i++) {
-      const z=-.548+i*.035;
-      body.box(MAT.black,.004,.009,.018,side*.031,.032,z);
-      body.box(worn,.002,.002,.018,side*.033,.024,z);
-    }
+  // The fiberglass upper handguard has open side vents under a rounded crown.
+  // Barrel machining remains visible through the vents and ahead of the wood.
+  body.add(turned([[-.889,.014],[-.864,.014],[-.859,.0155],[-.612,.0155],[-.604,.018],[-.592,.018],[-.574,.015],[-.229,.015]]),steel,[1,1,1],[0,.044,0]);
+  const vents=[];
+  for(let i=0;i<9;i++){
+    const z=-.548+i*.035;
+    vents.push([[z-.010,.025],[z+.010,.025],[z+.010,.036],[z-.010,.036]]);
   }
+  for(const side of [-1,1]) body.add(profile([[-.584,.017],[-.584,.043],[-.238,.043],[-.238,.017]],.004,.001,vents),handguard,[1,1,1],[side*.031,0,0]);
+  const crown=new THREE.Shape();
+  crown.absellipse(0,0,.034,.023,0,Math.PI,false,0);
+  crown.lineTo(-.030,0);crown.absellipse(0,0,.030,.019,Math.PI,0,true,0);crown.closePath();
+  const crownGeometry=new THREE.ExtrudeGeometry(crown,{depth:.346,bevelEnabled:false,curveSegments:16,steps:1});
+  body.add(crownGeometry,handguard,[1,1,1],[0,.043,-.584]);
   // Barrel band, front ferrule and exposed gas-cylinder assembly underneath.
   for (const z of [-.248,-.595]) {
     body.box(phosphate,.078,.007,.019,0,-.049,z);
@@ -80,30 +84,33 @@ export function buildM14(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, 
   body.box(steel,.027,.020,.023,0,-.023,-.796);
   body.add('ring',steel,[.010,.014,.018],[0,-.03,-.603],[Math.PI/2,0,0]);
 
-  // Slotted flash suppressor with a muzzle opening and thin separating webs.
-  body.tube(phosphate,.0185,.029,0,.044,-.879);
-  body.tube(MAT.black,.0116,.076,0,.044,-.914);
+  // Open six-slot flash suppressor: end collars and thin webs surround a
+  // genuine bore. The visible void also reads correctly in dropped/world guns.
+  body.add(hollowTube(.0185,.008,.029),phosphate,[1,1,1],[0,.044,-.879]);
   for (let i=0;i<6;i++) {
     const a=i*Math.PI/3;
-    body.box(steel,.005,.005,.065,Math.cos(a)*.018,.044+Math.sin(a)*.018,-.916,0,0,a);
+    body.box(steel,.0045,.0045,.065,Math.cos(a)*.0165,.044+Math.sin(a)*.0165,-.916,0,0,a);
   }
-  body.tube(worn,.019,.008,0,.044,-.95);
-  body.tube(MAT.black,.0122,.010,0,.044,-.957);
+  body.add(hollowTube(.019,.011,.008),worn,[1,1,1],[0,.044,-.950]);
 
-  // Twenty-round box magazine: independent so reloads can lower it from the well.
-  magazine.box(phosphate,.067,.170,.116,0,-.141,-.135,.055);
-  magazine.box(steel,.073,.012,.123,0,-.225,-.13,.055);
+  // Pressed twenty-round steel magazine: rolled shoulder, recessed stampings,
+  // folded floorplate and separate feed lips, all carried by the reload group.
+  magazine.add(profile([[-.192,-.046],[-.079,-.046],[-.075,-.211],[-.083,-.223],[-.187,-.228],[-.193,-.215]],.061,.003),phosphate,[1,1,1]);
+  magazine.add(profile([[-.193,-.218],[-.076,-.214],[-.076,-.227],[-.193,-.232]],.070,.001),steel,[1,1,1]);
   for (const side of [-1,1]) {
-    for (const z of [-.175,-.127,-.079]) magazine.box(steel,.003,.131,.007,side*.035,-.137,z,.055);
-    magazine.box(worn,.002,.004,.085,side*.037,-.063,-.135,.055);
+    magazine.add(profile([[-.176,-.075],[-.093,-.075],[-.090,-.201],[-.176,-.205]],.0015,.001),steel,[1,1,1],[side*.033,0,0]);
+    for (const z of [-.166,-.127,-.091]) magazine.box(phosphate,.002,.115,.004,side*.035,-.139,z);
+    magazine.box(worn,.0015,.003,.085,side*.033,-.063,-.135);
+    magazine.box(phosphate,.008,.012,.085,side*.023,-.046,-.135);
   }
-  magazine.tube(MAT.brass,.009,.076,0,-.048,-.132);
-  body.box(phosphate,.080,.018,.132,0,-.052,-.135);
+  magazine.tube(MAT.brass,.007,.076,0,-.044,-.132);
+  body.add(profile([[-.201,-.043],[-.071,-.043],[-.068,-.061],[-.201,-.061]],.076,.002),phosphate,[1,1,1]);
   body.box(steel,.019,.038,.012,0,-.075,-.066,-.3);
 
-  // Rounded trigger guard and the safety inside its front edge.
-  body.add('ring',phosphate,[.048,.031,.029],[0,-.085,.016],[0,Math.PI/2,0]);
-  body.box(worn,.009,.030,.009,0,-.073,.009,-.3);
+  // Forged trigger guard with an actual opening and an inward-curving trigger.
+  body.add(profile([[-.035,-.047],[-.036,-.092],[-.021,-.115],[.046,-.113],[.061,-.092],[.060,-.048]],.018,.002,
+    [[[-.024,-.058],[-.024,-.089],[-.014,-.103],[.039,-.102],[.049,-.087],[.049,-.058]]]),phosphate,[1,1,1]);
+  body.add(profile([[.010,-.047],[.003,-.062],[.006,-.084],[.018,-.092],[.020,-.086],[.014,-.076],[.014,-.055]],.009,.001),worn,[1,1,1]);
   body.box(steel,.014,.029,.008,0,-.065,-.028,.35);
   body.box(phosphate,.042,.006,.079,0,-.052,.02);
 
@@ -140,8 +147,9 @@ export function buildM14(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, 
   for (const side of [-1,1]) body.box(steel,.007,.039,.016,side*.015,.138,-.836,0,0,-side*.19);
 
   // Visible bolt and operating rod reciprocate with each semi-auto shot.
-  action.box(worn,.052,.023,.104,0,.067,-.077);
-  action.box(steel,.020,.009,.111,-.014,.084,-.079);
+  action.add(profile([[-.133,.048],[-.133,.071],[-.122,.080],[-.040,.080],[-.029,.064],[-.029,.048]],.052,.0015),worn,[1,1,1]);
+  action.add(profile([[-.132,.072],[-.132,.086],[-.048,.086],[-.038,.077]],.016,.001),steel,[1,1,1],[-.013,0,0]);
+  action.box(phosphate,.003,.005,.035,.028,.063,-.071);
   action.box(phosphate,.013,.017,.210,.043,.042,-.160);
   action.box(steel,.042,.014,.023,.058,.048,-.041,0,0,-.12);
   action.add('sphere',phosphate,[.017,.011,.018],[.079,.043,-.04]);
@@ -161,6 +169,6 @@ export function buildM14(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, 
   const stamp=new Parts();
   marking({...w,name:'M14  ·  7.62'},stamp,.0415,.023,-.103,.13);
   model.add(stamp.build());
-  model.userData={muzzle:[0,.044,-.963],sightY,length:1.36,hip:[.215,-.165,-.68]};
+  model.userData={muzzle:[0,.044,-.963],sightY,length:1.36,hip:[.215,-.165,-.68],supportGrip:[-.025,.012,-.35],authoredDetail:true};
   return model;
 }

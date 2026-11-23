@@ -559,7 +559,11 @@ export class World {
       const reticle = gun?.getObjectByName('optic_reticle');
       if (reticle) reticle.visible = this.vmWeapon.optic === 1 && aim > .2 && aim < .85 && !view.scoped;
       const magazine = gun?.getObjectByName('magazine');
-      if (magazine) magazine.position.y = -this.vmReload * (.07 + Math.max(0, reloadWave) * .08);
+      if (magazine) {
+        const direction = gun.userData.magazineReloadDirection || [0, -1, 0];
+        const travel = this.vmReload * (.07 + Math.max(0, reloadWave) * .08);
+        magazine.position.set(direction[0] * travel, direction[1] * travel, direction[2] * travel);
+      }
       const flash = this.muzzles[side];
       flash.visible = this.flashTimers[side] > 0 && this.vmCls >= 1 && this.vmCls <= 6;
       flash.rotation.z = Math.random() * Math.PI;
