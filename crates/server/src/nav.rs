@@ -202,30 +202,36 @@ mod tests {
     #[test]
     fn imported_routes_are_walkable_by_the_actual_player_simulation() {
         use sim::physics::{step, PState, B_FWD};
-        let map = map_by_id(MapId::Dust2);
-        let nav = Nav::build(map);
-        for team in 0..2 {
-            for site in 0..2 {
-                let center = map.sites[site].center();
-                let target = [center[0], map.site_height(site) + 0.02, center[1]];
-                let mut st = PState { pos: map.spawn_position(team, 0), ..PState::default() };
-                let route = nav.path(st.pos, target);
-                assert!(!route.is_empty());
-                let mut waypoint = 0;
-                for _ in 0..180 * 60 {
-                    while waypoint + 1 < route.len() && distance(st.pos, route[waypoint]) < 0.65 { waypoint += 1; }
-                    for ahead in [6usize, 3] {
-                        let next = (waypoint + ahead).min(route.len() - 1);
-                        if nav.walk_clear(map, st.pos, route[next]) { waypoint = next; break; }
+        for id in MapId::ALL {
+            let map = map_by_id(id);
+            if map.mesh.is_none() { continue; }
+            println!("checking actual player movement through {}", id.id());
+            let nav = Nav::build(map);
+            for team in 0..2 {
+                for site in 0..2 {
+                    let center = map.sites[site].center();
+                    let target = [center[0], map.site_height(site) + 0.02, center[1]];
+                    let mut st = PState { pos: map.spawn_position(team, 0), ..PState::default() };
+                    let minimum_y = st.pos[1].min(target[1]) - 5.0;
+                    let route = nav.path(st.pos, target);
+                    assert!(!route.is_empty(), "{} has no route for team {team} to site {site}", id.id());
+                    let mut waypoint = 0;
+                    for _ in 0..180 * 60 {
+                        while waypoint + 1 < route.len() && distance(st.pos, route[waypoint]) < 0.65 { waypoint += 1; }
+                        for ahead in [6usize, 3] {
+                            let next = (waypoint + ahead).min(route.len() - 1);
+                            if nav.walk_clear(map, st.pos, route[next]) { waypoint = next; break; }
+                        }
+                        let next = route[waypoint];
+                        let yaw = (st.pos[0] - next[0]).atan2(st.pos[2] - next[2]);
+                        step(map, &mut st, B_FWD, yaw, 1.0 / 60.0, 5.0);
+                        assert!(st.pos[1] > minimum_y,
+                            "{} player fell below the playable route for team {team} to site {site} at {:?}", id.id(), st.pos);
+                        if distance(st.pos, target) < 0.7 { break; }
                     }
-                    let next = route[waypoint];
-                    let yaw = (st.pos[0] - next[0]).atan2(st.pos[2] - next[2]);
-                    step(map, &mut st, B_FWD, yaw, 1.0 / 60.0, 5.0);
-                    assert!(st.pos[1] > -6.0, "player fell out of map at {:?}", st.pos);
-                    if distance(st.pos, target) < 0.7 { break; }
+                    assert!(distance(st.pos, target) < 0.7,
+                        "{} team {team} cannot walk to site {site}: feet {:?}, next {:?}, target {target:?}", id.id(), st.pos, route[waypoint]);
                 }
-                assert!(distance(st.pos, target) < 0.7,
-                    "team {team} cannot walk to site {site}: feet {:?}, next {:?}, target {target:?}", st.pos, route[waypoint]);
             }
         }
     }

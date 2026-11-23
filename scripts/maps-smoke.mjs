@@ -6,7 +6,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const base = new URL(process.argv[2] || 'http://127.0.0.1:8088');
 assert.ok(['http:', 'https:'].includes(base.protocol));
-const ids = ['sirocco', 'dockyard', 'norheim', 'meridian', 'nord_datacenter', 'dust2'];
+const ids = ['sirocco', 'dockyard', 'norheim', 'meridian', 'nord_datacenter', 'dust2',
+  'compound', 'province', 'italy', 'assault', 'office'];
+const meshIds = new Set(ids.slice(5));
 const clients = [];
 let wasm;
 
@@ -32,12 +34,14 @@ function validateHello(hello) {
   assert.ok(metadata, 'active map belongs to catalog');
   for (const key of ['id', 'index', 'name', 'theme', 'description']) assert.equal(map[key], metadata[key]);
   assert.ok(map.w > 10 && map.h > 10, 'playable map dimensions');
+  assert.equal(map.collision === 'mesh', meshIds.has(map.id), 'each imported map uses native triangle collision');
   if (map.collision === 'mesh') {
-    assert.equal(map.id, 'dust2');
     assert.ok(map.collisionSamples.length >= 4, 'native mesh floor samples include both spawns and sites');
     assert.ok(map.collisionSamples.every(point => point.length === 3 && point.every(Number.isFinite)));
-    assert.ok(new Set(map.collisionSamples.map(point => Math.round(point[1] * 10))).size >= 3,
-      'imported map preserves distinct floor elevations');
+    // The selected spawns/objectives can share a floor even on a layered map.
+    // Dust2's authored sample locations deliberately cover three elevations.
+    if (map.id === 'dust2') assert.ok(new Set(map.collisionSamples.map(point => Math.round(point[1] * 10))).size >= 3,
+      'Dust2 preserves its sampled floor elevations');
   } else {
     assert.ok(map.boxes.length > 10, 'playable collision boxes');
   }
@@ -110,7 +114,7 @@ async function updated(before, map, host, changed) {
   await until(() => active().every(client =>
     client.settings.length > before.get(client).settings &&
     (!changed || (client.hellos.length > before.get(client).hello && client.snapshot?.map === map &&
-      client.snapshotSerial > client.helloSerial))), `all clients switch to ${map}`);
+      client.snapshotSerial > client.helloSerial))), `all clients switch to ${map}`, 45000);
   for (const client of active()) checkSettings(client, map, host);
 }
 
@@ -246,7 +250,7 @@ try {
     for (let step = 0; step < 4; step++) await predictInput(host, 0, map);
     assert.equal(host.snapshot.me.st[6], 1, 'native player settles on spawn floor');
     assert.ok(Math.abs(host.snapshot.me.st[1] - spawnHeight) < 0.02, 'spawn height matches supporting floor');
-    if (map !== 'dust2') assert.ok(Math.abs(host.snapshot.me.st[1] - 0.001) < 0.003);
+    if (metadata.collision !== 'mesh') assert.ok(Math.abs(host.snapshot.me.st[1] - 0.001) < 0.003);
     await until(() => host.snapshot.ph === 1, `${map}: freeze ends`, 10000);
     const start = host.snapshot.me.st.slice(0, 3);
     for (let step = 0; step < 4; step++) await predictInput(host, 1, map);

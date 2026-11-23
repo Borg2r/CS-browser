@@ -5,7 +5,7 @@ import { playerModel } from './characters.js';
 import { importedPlayerModel, updateImportedPlayer, disposeImportedPlayer } from './imported-characters.js';
 import { buildDesert } from './desert.js';
 import { locationTexture, locationTint, lightLocation, buildLocation } from './locations.js';
-import { buildDust2 } from './dust2.js';
+import { buildImportedMap, importedMapURL, cancelPendingImportedMap } from './imported-maps.js';
 
 const TIMBER_COLS = [0xb39770, 0x89775b, 0xb09b78, 0xb8a580, 0x9a8061, 0xc2a77b];
 
@@ -87,7 +87,9 @@ function box(w, h, d, color, x = 0, y = 0, z = 0) {
 // share immutable GPU assets, so removing those entities must not dispose them.
 function disposeMapGroup(group) {
   const geometries = new Set(), materials = new Set(), textures = new Set();
+  const releases = [];
   group.traverse(o => {
+    if (o.userData.releaseImportedSource) releases.push(o.userData.releaseImportedSource);
     if (o.geometry) geometries.add(o.geometry);
     for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
       if (!m) continue;
@@ -98,7 +100,7 @@ function disposeMapGroup(group) {
     if (o.isInstancedMesh) o.dispose();
   });
   textures.forEach(t => t.dispose()); materials.forEach(m => m.dispose());
-  geometries.forEach(g => g.dispose()); group.clear();
+  geometries.forEach(g => g.dispose()); releases.forEach(release => release()); group.clear();
 }
 
 export class World {
@@ -180,7 +182,7 @@ export class World {
     this.map = map;
     this.mapGroup = new THREE.Group(); this.mapGroup.name = `Map: ${map.name || map.id || 'Sirocco'}`;
     this.scene.add(this.mapGroup);
-    lightLocation(this, theme);
+    lightLocation(this, importedMapURL(map.id) ? map.id : theme);
     // Frame and light the whole playable town as its footprint changes.
     this.overviewRadius = Math.max(map.w, map.h) * 1.35;
     this.overviewHeight = Math.max(map.w, map.h) * 1.05;
@@ -190,15 +192,27 @@ export class World {
       left: -shadowExtent, right: shadowExtent, top: shadowExtent, bottom: -shadowExtent,
     });
     this.sun.shadow.camera.updateProjectionMatrix();
-    if (theme === 'dust2') {
+    if (importedMapURL(map.id)) {
       // The model includes its actual floors, walls and cover. Collision data
       // is intentionally not rendered on top of the original textured mesh.
-      this.overviewTarget.set(-8, 0, -28);
-      this.overviewRadius = 108; this.overviewHeight = 84;
+      if (map.id === 'dust2') {
+        this.overviewTarget.set(-8, 0, -28);
+        this.overviewRadius = 108; this.overviewHeight = 84;
+      }
       const group = this.mapGroup;
-      this.mapReady = buildDust2(group, () => this.mapGroup === group,
-        Math.min(8, this.renderer.capabilities.getMaxAnisotropy())).then(current => {
-        if (!current || this.mapGroup !== group) return false;
+      this.mapReady = buildImportedMap(group, map, () => this.mapGroup === group,
+        Math.min(8, this.renderer.capabilities.getMaxAnisotropy())).then(manifest => {
+        if (!manifest || this.mapGroup !== group) return false;
+        if (manifest.overview) {
+          if (manifest.overview.target) this.overviewTarget.fromArray(manifest.overview.target);
+          if (manifest.overview.radius) this.overviewRadius = manifest.overview.radius;
+          if (manifest.overview.height) this.overviewHeight = manifest.overview.height;
+        } else if (map.id !== 'dust2' && manifest.bounds) {
+          const [lo, hi] = manifest.bounds;
+          this.overviewTarget.set((lo[0] + hi[0]) / 2, Math.min(2, lo[1]), (lo[2] + hi[2]) / 2);
+          const radius = Math.max(hi[0] - lo[0], hi[2] - lo[2]) / 2;
+          this.overviewRadius = radius * 1.35; this.overviewHeight = radius * 1.05;
+        }
         this.addSiteMarkers(map, group);
         return true;
       });
@@ -260,6 +274,7 @@ export class World {
   }
 
   clearMap() {
+    cancelPendingImportedMap();
     if (this.mapGroup) {
       this.scene.remove(this.mapGroup); disposeMapGroup(this.mapGroup); this.mapGroup = null;
     }

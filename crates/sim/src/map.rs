@@ -15,10 +15,19 @@ pub enum MapId {
     Meridian = 3,
     NordDatacenter = 4,
     Dust2 = 5,
+    Compound = 6,
+    Province = 7,
+    Italy = 8,
+    Assault = 9,
+    Office = 10,
 }
 
 impl MapId {
-    pub const ALL: [Self; 6] = [Self::Sirocco, Self::Dockyard, Self::Norheim, Self::Meridian, Self::NordDatacenter, Self::Dust2];
+    pub const ALL: [Self; 11] = [
+        Self::Sirocco, Self::Dockyard, Self::Norheim, Self::Meridian,
+        Self::NordDatacenter, Self::Dust2, Self::Compound, Self::Province,
+        Self::Italy, Self::Assault, Self::Office,
+    ];
 
     pub const fn index(self) -> u32 { self as u32 }
 
@@ -36,6 +45,8 @@ impl MapId {
             Self::Norheim => "norheim", Self::Meridian => "meridian",
             Self::NordDatacenter => "nord_datacenter",
             Self::Dust2 => "dust2",
+            Self::Compound => "compound", Self::Province => "province",
+            Self::Italy => "italy", Self::Assault => "assault", Self::Office => "office",
         }
     }
 
@@ -45,6 +56,8 @@ impl MapId {
             Self::Norheim => "Norheim", Self::Meridian => "Meridian",
             Self::NordDatacenter => "NORD Datacenter",
             Self::Dust2 => "Dust2",
+            Self::Compound => "Compound", Self::Province => "Province",
+            Self::Italy => "Italy", Self::Assault => "Assault", Self::Office => "Office",
         }
     }
 
@@ -54,6 +67,8 @@ impl MapId {
             Self::Norheim => "office", Self::Meridian => "ship",
             Self::NordDatacenter => "datacenter",
             Self::Dust2 => "dust2",
+            Self::Compound => "compound", Self::Province => "province",
+            Self::Italy => "italy", Self::Assault => "assault", Self::Office => "cs_office",
         }
     }
 
@@ -65,6 +80,11 @@ impl MapId {
             Self::Meridian => "A cargo ship with open deck routes, cargo stacks and a central superstructure.",
             Self::NordDatacenter => "Server halls, cooling equipment and service routes adapted from the NORD datacenter model.",
             Self::Dust2 => "Classic desert streets, double doors and tunnels, with the original textured layout and elevation changes.",
+            Self::Compound => "An industrial compound with warehouse routes and open yards, imported from the supplied map model.",
+            Self::Province => "Winding streets and enclosed courtyards through the original Province map.",
+            Self::Italy => "Narrow Italian streets, market routes and interiors, preserving the supplied map's textures and lighting.",
+            Self::Assault => "A warehouse assault through industrial streets and indoor routes, using the original textured map.",
+            Self::Office => "Office corridors, meeting rooms and exterior approaches from the supplied classic map model.",
         }
     }
 }
@@ -292,6 +312,11 @@ pub fn map_by_id(id: MapId) -> &'static Map {
     static MERIDIAN: OnceLock<Map> = OnceLock::new();
     static NORD_DATACENTER: OnceLock<Map> = OnceLock::new();
     static DUST2: OnceLock<Map> = OnceLock::new();
+    static COMPOUND: OnceLock<Map> = OnceLock::new();
+    static PROVINCE: OnceLock<Map> = OnceLock::new();
+    static ITALY: OnceLock<Map> = OnceLock::new();
+    static ASSAULT: OnceLock<Map> = OnceLock::new();
+    static OFFICE: OnceLock<Map> = OnceLock::new();
     match id {
         MapId::Sirocco => SIROCCO.get_or_init(crate::maps::sirocco::build),
         MapId::Dockyard => DOCKYARD.get_or_init(crate::maps::dockyard::build),
@@ -299,6 +324,11 @@ pub fn map_by_id(id: MapId) -> &'static Map {
         MapId::Meridian => MERIDIAN.get_or_init(crate::maps::meridian::build),
         MapId::NordDatacenter => NORD_DATACENTER.get_or_init(crate::maps::nord_datacenter::build),
         MapId::Dust2 => DUST2.get_or_init(crate::maps::dust2::build),
+        MapId::Compound => COMPOUND.get_or_init(|| crate::maps::imported::build(id)),
+        MapId::Province => PROVINCE.get_or_init(|| crate::maps::imported::build(id)),
+        MapId::Italy => ITALY.get_or_init(|| crate::maps::imported::build(id)),
+        MapId::Assault => ASSAULT.get_or_init(|| crate::maps::imported::build(id)),
+        MapId::Office => OFFICE.get_or_init(|| crate::maps::imported::build(id)),
     }
 }
 
@@ -383,7 +413,8 @@ mod tests {
     fn map_ids_are_stable_and_invalid_ids_do_not_fall_back() {
         assert_eq!(MapId::ALL.map(|id| (id.index(), id.id())), [
             (0, "sirocco"), (1, "dockyard"), (2, "norheim"), (3, "meridian"), (4, "nord_datacenter"),
-            (5, "dust2"),
+            (5, "dust2"), (6, "compound"), (7, "province"), (8, "italy"),
+            (9, "assault"), (10, "office"),
         ], "wire and WASM indices are an append-only contract");
         for id in MapId::ALL {
             assert_eq!(MapId::from_index(id.index()), Some(id));
@@ -408,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn spawn_facing_offers_twelve_metres_of_clear_courtyard() {
+    fn spawn_facing_offers_clear_room_to_move() {
         for id in MapId::ALL {
             println!("checking spawn-facing clearance on {}", id.id());
             check_spawn_facing(map_by_id(id));
@@ -416,11 +447,18 @@ mod tests {
     }
 
     fn check_spawn_facing(m: &Map) {
+        // Existing outdoor spawn courtyards retain their 12m guarantee. The
+        // imported interiors keep their source dimensions and nearby corridor
+        // turn; its connectivity is checked separately by actual bot routes.
+        let clearance = match m.id {
+            MapId::Compound => 5.0, MapId::Province => 7.0,
+            MapId::Italy | MapId::Assault => 4.0, _ => 12.0,
+        };
         for (team, spawns) in m.spawns.iter().enumerate() {
             for (slot, &spawn) in spawns.iter().enumerate() {
                 let direction = view_dir(m.spawn_yaw(team, spawn), 0.0);
                 let mut y = m.spawn_position(team, slot)[1];
-                for step in 1..=24 {
+                for step in 1..=(clearance / 0.5) as usize {
                     let distance = step as f32 * 0.5;
                     let x = spawn[0] + direction[0] * distance;
                     let z = spawn[1] + direction[2] * distance;

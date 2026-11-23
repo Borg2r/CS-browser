@@ -10,7 +10,8 @@ RUN --mount=type=secret,id=proxy_ca \
     rustup target add wasm32-unknown-unknown && \
     cargo build --locked --release -p server && \
     cargo build --locked --release -p predict --target wasm32-unknown-unknown && \
-    cp target/wasm32-unknown-unknown/release/predict.wasm client/predict.wasm
+    cp target/wasm32-unknown-unknown/release/predict.wasm client/predict.wasm && \
+    gzip -n -9 -c client/predict.wasm > client/predict.wasm.gz
 RUN chmod -R a+rX /app/client
 
 FROM debian:trixie-slim

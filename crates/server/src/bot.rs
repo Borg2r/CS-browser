@@ -612,6 +612,48 @@ mod tests {
     }
 
     #[test]
+    fn bot_navigates_province_corner_with_normal_steering() {
+        let mut g = Game::new();
+        g.map = sim::map::map_by_id(sim::map::MapId::Province);
+        g.nav = crate::nav::Nav::build(g.map);
+        g.players.truncate(1);
+        g.phase = Phase::Live;
+        let center = g.map.sites[0].center();
+        let target = [center[0], g.map.site_height(0) + 0.02, center[1]];
+        // Both approaches can trap a follower which turns instantly and never
+        // runs the real bot's stuck detection, jump and replanning behavior.
+        for start in [[-24.5, 8.22995, 39.5], [-24.5, 8.22995, 37.5]] {
+            g.alert = None;
+            let p = &mut g.players[0];
+            p.team = DEF;
+            p.alive = true;
+            p.has_bomb = false;
+            p.st = PState { pos: start, ..PState::default() };
+            p.yaw = 0.0;
+            let mut bot = Bot::new(0.5);
+            bot.reset(0);
+            bot.set_goal(&g, start, 6, || target);
+            g.players[0].bot = Some(Box::new(bot));
+            let mut arrived = false;
+            let mut jumps = 0;
+            for tick in 0..120 * 60 {
+                think(&mut g, 0, TICK);
+                let p = &mut g.players[0];
+                jumps += usize::from(p.buttons & B_JUMP != 0);
+                let speed = p.max_speed();
+                step(g.map, &mut p.st, p.buttons, p.yaw, TICK, speed);
+                if g.map.sites[0].contains(p.st.pos[0], p.st.pos[2])
+                    && (p.st.pos[1] - g.map.site_height(0)).abs() < 0.7 {
+                    println!("Province bot from {start:?} arrived after {:.2}s with {jumps} recovery jumps", tick as f32 * TICK);
+                    arrived = true;
+                    break;
+                }
+            }
+            assert!(arrived, "actual Province bot from {start:?} stuck at {:?}", g.players[0].st.pos);
+        }
+    }
+
+    #[test]
     fn bots_use_both_triggers_for_automatic_and_lever_akimbo_primaries() {
         for id in ["twin_mp7", "twin_lever"] {
             let mut g = duel(Difficulty::Expert);

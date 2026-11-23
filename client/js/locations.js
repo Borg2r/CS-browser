@@ -97,6 +97,10 @@ export function lightLocation(world, theme) {
     office: [0x8398a2, 0x9ca9aa, 100, 260, 0xe7f0ed, 0xa4a494, 2.4, 0xfff4da, 1.4, 1.05],
     ship: [0x99bacb, 0xa3bdc7, 110, 310, 0xd4e7f0, 0x657e83, 1.8, 0xffe4c0, 2.7, 1.1],
     datacenter: [0x8ca8b8, 0x9eb5bc, 100, 280, 0xd6eef6, 0x87979f, 2.65, 0xe4f1f4, 1.7, 1.05],
+    compound: [0x9eb9c4, 0xb1bec1, 100, 300, 0xe2edf1, 0x788177, 1.8, 0xffefd9, 2.3, 1.05],
+    province: [0xaecbdb, 0xc7d2ce, 100, 300, 0xe5eff6, 0x8b8069, 1.9, 0xffefd2, 2.5, 1.05],
+    italy: [0xa1b6cc, 0xc5cdcf, 100, 300, 0xe3eaf6, 0x8a8175, 1.8, 0xffeddb, 2.0, 1.0],
+    assault: [0x4f657d, 0x77838e, 100, 300, 0xd5e0f1, 0x6b717a, 2.0, 0xe6edff, 1.6, 1.0],
   };
   const s = styles[theme === 'industrial' ? 'dockyard' : theme] || styles.desert;
   world.scene.background.set(s[0]); world.scene.fog = new THREE.Fog(s[1], s[2], s[3]);

@@ -57,7 +57,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 
 ## Game
 
-- Six operations with protected spawns, multiple approaches and two bomb sites:
+- Eleven operations with protected spawns, multiple approaches and two bomb sites:
   **Sirocco**, the expanded desert town; **Dockyard**, the original container
   terminal with wider quays; **Norheim**, an office operation based on the actual
   Kontor Norheim model; and **Meridian**, a cargo ship with side decks, cargo
@@ -72,11 +72,17 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   including tunnels, ramps, stairs and both bomb sites. Native and WASM physics
   share the same triangle collision; bots navigate connected floor levels.
   See [DUST2_MAP.md](DUST2_MAP.md) for provenance and rebuilding the assets.
+  **Compound**, **Province**, **Italy**, **Assault**, and **Office** use the five
+  uploaded maps: their industrial yards, Mediterranean streets, warehouse and
+  office corridors retain the source geometry and textures. Italy, Assault and
+  Office preserve their baked lighting. These maps use Breachpoint's existing
+  demolition rules, with two bomb sites and selected protected spawn areas.
+  See [IMPORTED_MAPS.md](IMPORTED_MAPS.md) for source credits and conversion details.
 - The first player chooses the map before joining. The host can switch maps
   through **Esc → Map selection → Start selected map**. This starts a new match for
   everyone, resetting scores and equipment while keeping connected players,
   teams and bot difficulty. Other players see the active map and join it.
-- Spawn courtyards block direct and wall-penetrating shots from opposing spawns,
+- Spawn areas block direct and wall-penetrating shots from opposing spawns,
   including jumping sightlines. Bots can reach both objectives on every map.
 - Fifteen uploaded weapon models with original textures, normal maps and
   material detail, plus procedural models for the remaining weapons. M4A4 and

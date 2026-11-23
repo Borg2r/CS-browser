@@ -46,5 +46,5 @@ cargo test --locked
 ```
 
 Run `node scripts/maps-smoke.mjs http://127.0.0.1:8088` against a fresh local
-server to verify all six map selections, guest multiplayer, native/WASM floor
+server to verify all eleven map selections, guest multiplayer, native/WASM floor
 collision and movement, and host controls.
