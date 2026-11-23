@@ -268,7 +268,22 @@ export class World {
     }
     m.seen = true;
     m.root.visible = !hidden;
+    m.root.position.set(s.x, s.y, s.z);
+    m.root.rotation.y = s.yaw;
+    m.pack.visible = !!(s.flags & 2);
+    const modelKey = weaponModelKey(w);
+    if (m.weapon !== modelKey) {
+      m.weapon = modelKey; m.gunSlot.clear(); m.gunSlot.add(gunModel(w));
+      if (m.gunSlotL) { m.gunSlotL.clear(); if (w.dual) m.gunSlotL.add(gunModel(w)); }
+      const compactGrip = !w.dual && (w.cls <= 1 || w.cls > 6);
+      if (m.leftArm) m.leftArm.visible = !w.dual && (!compactGrip || !m.leftArmPistol);
+      if (m.leftArmPistol) m.leftArmPistol.visible = compactGrip;
+      if (m.leftArmDual) m.leftArmDual.visible = !!w.dual;
+    }
     if (!s.alive) {
+      // A newly observed corpse still needs its snapshot transform and loadout.
+      // Forget its motion history so respawning does not create a false stride.
+      m.last = null;
       m.deadT = Math.min(1, m.deadT + dt * 4);
       m.body.rotation.x = -m.deadT * Math.PI / 2; m.body.position.y = m.deadT * 0.15;
       return 0;
@@ -276,28 +291,36 @@ export class World {
     m.deadT = 0; m.body.rotation.x = 0; m.body.position.y = 0;
     const speed = m.last ? Math.hypot(s.x - m.last[0], s.z - m.last[1]) / Math.max(dt, 0.001) : 0;
     m.last = [s.x, s.z];
-    m.root.position.set(s.x, s.y, s.z);
-    m.root.rotation.y = s.yaw;
     const crouch = s.flags & 1;
-    m.torso.position.y = crouch ? 0.5 : 0.85;
-    m.legL.position.y = m.legR.position.y = crouch ? 0.5 : 0.85;
-    m.legL.scale.y = m.legR.scale.y = crouch ? 0.6 : 1;
+    // Keep the detailed head inside the shared 1.8m / 1.2m hit volumes.
+    // Legs fold independently; scaling the head or vest would distort the gear.
+    m.poseTime += Math.min(dt, .05);
+    const breathing = Math.sin(m.poseTime * 1.7 + id * 1.37) * .0025;
+    m.torso.position.y = (crouch ? 0.25 : 0.85) + breathing;
+    m.legL.position.y = m.legR.position.y = crouch ? 0.35 : 0.85;
+    m.legL.position.z = m.legR.position.z = crouch ? 0.12 : 0;
     const prev = m.phase;
     m.phase += Math.min(speed, 7) * dt * 1.7;
     const sw = Math.sin(m.phase) * Math.min(1, speed / 3) * 0.7;
-    m.legL.rotation.x = sw; m.legR.rotation.x = -sw;
-    m.arms.rotation.x = s.pitch * 0.9;
-    m.torso.rotation.z = Math.sin(m.phase) * Math.min(speed, 6) * .003;
-    if (m.kneeL) m.kneeL.rotation.x = Math.max(0, -sw) * .45;
-    if (m.kneeR) m.kneeR.rotation.x = Math.max(0, sw) * .45;
-    m.pack.visible = !!(s.flags & 2);
-    const modelKey = weaponModelKey(w);
-    if (m.weapon !== modelKey) {
-      m.weapon = modelKey; m.gunSlot.clear(); m.gunSlot.add(gunModel(w));
-      if (m.gunSlotL) { m.gunSlotL.clear(); if (w.dual) m.gunSlotL.add(gunModel(w)); }
-      if (m.leftArm) m.leftArm.visible = !w.dual;
-      if (m.leftArmDual) m.leftArmDual.visible = !!w.dual;
+    for (const [leg, knee, foot, stride] of [
+      [m.legL, m.kneeL, m.footL, sw], [m.legR, m.kneeR, m.footR, -sw],
+    ]) {
+      if (crouch && knee && foot) {
+        // Fold full-length legs and solve the calf angle to keep the boot sole
+        // on the ground. The ankle cancels that angle instead of tipping shoes.
+        const thigh = 1.6 + stride * .14;
+        const kneeHeight = .35 - .42 * Math.cos(thigh);
+        const calf = -Math.acos(THREE.MathUtils.clamp((kneeHeight - .16) / .275, .1, .98));
+        leg.rotation.x = thigh; knee.rotation.x = calf - thigh; foot.rotation.x = -calf;
+      } else {
+        leg.rotation.x = stride;
+        if (knee) knee.rotation.x = Math.max(0, -stride) * .45;
+        if (foot) foot.rotation.x = 0;
+      }
     }
+    m.arms.rotation.x = s.pitch * 0.9;
+    if (m.head) m.head.rotation.x = THREE.MathUtils.clamp(s.pitch * .35, -.4, .4);
+    m.torso.rotation.z = Math.sin(m.phase) * Math.min(speed, 6) * .003;
     // Report a footstep when the stride crosses a half cycle at running speed.
     return speed > 3.4 && Math.floor(prev / Math.PI) !== Math.floor(m.phase / Math.PI) ? 1 : 0;
   }

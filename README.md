@@ -76,6 +76,11 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   including jumping sightlines. Bots can reach both objectives on every map.
 - Detailed procedural weapons and operators, articulated equipment, warm desert
   lighting, and architectural scenery. No external model downloads are needed.
+- Operators have shaped plate carriers, stitched uniforms, magazine pouches,
+  belt equipment, fitted boots and detailed headgear. Tan attackers wear wrapped
+  cloth and goggles; navy defenders have helmets, headsets and face coverings.
+  Weapon grips adapt to rifles, pistols and akimbo pairs, with moving heads and
+  a crouched pose that bends the knees and keeps boots on the ground.
 - 30 rounds: sides swap at half-time after 15, first team to 16 wins.
 - Fixed spray patterns, bullet penetration through thin cover, fall damage,
   slow-down when hit, hold-to-aim iron sights and optics, knife slash / stab / backstab.
