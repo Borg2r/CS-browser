@@ -4,6 +4,15 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const TEAM = ['', 'atk', 'def'];
 const SLOT_NAMES = ['PRIMARY', 'SIDEARM', 'KNIFE', 'FRAG', 'FLASH', 'SMOKE', 'CHARGE'];
+let dustRadarImage;
+function loadDustRadar() {
+  if (!dustRadarImage) dustRadarImage = new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image); image.onerror = reject;
+    image.src = new URL('../assets/dust2/radar.svg', import.meta.url).href;
+  }).catch(error => { dustRadarImage = null; throw error; });
+  return dustRadarImage;
+}
 
 export class Hud {
   constructor(onBuy, onBuyClosed) {
@@ -36,18 +45,28 @@ export class Hud {
     const g = c.getContext('2d'), s = Math.min(192 / (hello.map.w * 2), 178 / (hello.map.h * 2));
     this.rs = s; this.rox = hello.map.w + (200 - hello.map.w * 2 * s) / (2 * s);
     this.roz = hello.map.h + (186 - hello.map.h * 2 * s) / (2 * s);
-    g.fillStyle = '#67533c'; g.fillRect(0, 0, 200, 186);
-    hello.map.sites.forEach((z, k) => {
-      g.fillStyle = 'rgba(240,193,75,.22)'; g.fillRect((z[0] + this.rox) * s, (z[1] + this.roz) * s, (z[2] - z[0]) * s, (z[3] - z[1]) * s);
+    const dust = hello.map.theme === 'dust2', rox = this.rox, roz = this.roz;
+    g.fillStyle = dust ? '#282f2e' : '#67533c'; g.fillRect(0, 0, 200, 186);
+    const drawSites = () => hello.map.sites.forEach((z, k) => {
+      g.fillStyle = 'rgba(240,193,75,.22)'; g.fillRect((z[0] + rox) * s, (z[1] + roz) * s, (z[2] - z[0]) * s, (z[3] - z[1]) * s);
       g.fillStyle = 'rgba(240,193,75,.9)'; g.font = 'bold 16px sans-serif'; g.textAlign = 'center';
-      g.fillText('AB'[k], ((z[0] + z[2]) / 2 + this.rox) * s, ((z[1] + z[3]) / 2 + this.roz) * s + 6);
+      g.fillText('AB'[k], ((z[0] + z[2]) / 2 + rox) * s, ((z[1] + z[3]) / 2 + roz) * s + 6);
     });
+    drawSites();
     for (const b of hello.map.boxes) {
       if (!b[6] || b[1] >= 2) continue;
       g.fillStyle = ['', '#2c2723', '#a39170', '#8a7352', '#b3a487'][b[6]];
       g.fillRect((b[0] + this.rox) * s, (b[2] + this.roz) * s, (b[3] - b[0]) * s, (b[5] - b[2]) * s);
     }
     this.radarBg = c;
+    if (dust) loadDustRadar().then(image => {
+      // A previous hello may finish loading after a map switch/reconnect.
+      if (this.radarBg !== c || this.map !== hello.map) return;
+      g.fillStyle = '#282f2e'; g.fillRect(0, 0, 200, 186);
+      g.drawImage(image, (rox - hello.map.w) * s, (roz - hello.map.h) * s,
+        hello.map.w * 2 * s, hello.map.h * 2 * s);
+      drawSites();
+    }).catch(() => {}); // Keep site/player markers usable if this optional image fails.
   }
 
   center(text, secs = 3, cls = '') {

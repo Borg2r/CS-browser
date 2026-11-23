@@ -834,7 +834,7 @@ impl Game {
         p.alive = true;
         p.hp = 100;
         p.has_bomb = false;
-        p.st = PState { pos: [sp[0], 0.01, sp[1]], ..Default::default() };
+        p.st = PState { pos: self.map.spawn_position((team - 1) as usize, n), ..Default::default() };
         p.yaw = self.map.spawn_yaw((team - 1) as usize, sp);
         p.pitch = 0.0;
         p.buttons = 0;
@@ -1078,8 +1078,11 @@ impl Game {
         p.hand_shots = [0.0; 2];
         p.hand_since_shot = [9.0; 2];
         p.cooldown = p.cooldown.max(0.35);
-        if collides(self.map, &pos, 0.5) {
-            pos = self.players[i].st.pos;
+        let from = self.players[i].st.pos;
+        let crosses_mesh = self.map.mesh.is_some() && !line_clear(self.map,
+            &[from[0], from[1] + 0.3, from[2]], &[pos[0], pos[1] + 0.3, pos[2]]);
+        if collides(self.map, &pos, 0.5) || crosses_mesh {
+            pos = from;
         }
         self.drop_item(g, pos, id);
     }
@@ -1100,7 +1103,10 @@ impl Game {
                     1 => p.sec.is_none(),
                     _ => false,
                 };
-                if near && !blocked && wants {
+                let reachable = near && (self.map.mesh.is_none() || line_clear(self.map,
+                    &[p.st.pos[0], p.st.pos[1] + 0.3, p.st.pos[2]],
+                    &[it.pos[0], it.pos[1] + 0.3, it.pos[2]]));
+                if reachable && !blocked && wants {
                     let it = self.items.swap_remove(k);
                     let g = Gun { w: it.w, ammo: it.ammo, reserve: it.reserve, left_ammo: it.left_ammo, optic: it.optic };
                     match slot {
@@ -1393,9 +1399,16 @@ impl Game {
             n.vel[1] -= 14.0 * dt;
             for a in 0..3 {
                 let old = n.pos[a];
-                n.pos[a] += n.vel[a] * dt;
-                if inside(&n.pos) {
-                    n.pos[a] = old;
+                let motion = n.vel[a] * dt;
+                let mut delta = [0.0; 3];
+                delta[a] = motion;
+                // Imported terrain includes thin walls and sloping floors;
+                // sweep the grenade volume so fast throws cannot tunnel through.
+                let mesh_hit = map.mesh.as_ref().and_then(|mesh|
+                    mesh.sweep_box([n.pos[0], n.pos[1] - 0.1, n.pos[2]], delta, 0.1, 0.2));
+                n.pos[a] += motion;
+                if mesh_hit.is_some() || inside(&n.pos) {
+                    n.pos[a] = mesh_hit.map_or(old, |hit| old + motion * (hit.fraction - 0.001).max(0.0));
                     n.vel[a] *= -0.45;
                     n.vel[(a + 1) % 3] *= 0.8;
                     n.vel[(a + 2) % 3] *= 0.8;
@@ -1527,7 +1540,8 @@ impl Game {
                 }
             }
             C_BOMB => {
-                let in_site = map.site_at(p.st.pos[0], p.st.pos[2]);
+                let in_site = map.site_at(p.st.pos[0], p.st.pos[2])
+                    .filter(|&site| (p.st.pos[1] - map.site_height(site)).abs() < 1.0);
                 if let (true, true, true, Some(site)) = (fire, can_plant, p.st.ground && p.has_bomb, in_site) {
                     if p.plant_t == 0.0 {
                         self.events.push(format!("{{\"t\":\"planting\",\"id\":{}}}", p.id));
@@ -1792,6 +1806,20 @@ impl Game {
         let mut map = metadata(self.map.id);
         map["boxes"] = json!(boxes);
         map["sites"] = json!(sites);
+        map["siteHeights"] = json!([self.map.site_height(0), self.map.site_height(1)]);
+        map["collision"] = json!(if self.map.mesh.is_some() { "mesh" } else { "boxes" });
+        if self.map.mesh.is_some() {
+            let mut samples = Vec::new();
+            for team in 0..2 {
+                let p = self.map.spawn_position(team, 0);
+                samples.push([p[0], p[1] - 0.01, p[2]]);
+            }
+            for index in 0..2 {
+                let c = self.map.sites[index].center();
+                samples.push([c[0], self.map.site_height(index), c[1]]);
+            }
+            map["collisionSamples"] = json!(samples);
+        }
         map["w"] = json!(self.map.w);
         map["h"] = json!(self.map.h);
         let optics: Vec<_> = OPTICS.iter().map(|o| json!({"index": o.index, "id": o.id, "name": o.name, "price": o.price, "zoom": o.zoom})).collect();
@@ -1954,6 +1982,58 @@ mod tests {
 
     fn latest_settings(rx: &mut mpsc::Receiver<String>) -> serde_json::Value {
         messages(rx).into_iter().rev().find(|m| m["t"] == "settings").unwrap()
+    }
+
+    #[test]
+    fn imported_thin_walls_block_dropped_weapons_and_pickups() {
+        let mut g = Game::new();
+        g.change_map(MapId::Dust2);
+        g.players.truncate(1);
+        let from = [-52.0, 3.21, 16.0];
+        let across = [-50.8, 3.21, 16.0];
+        assert!(!collides(g.map, &from, H_STAND));
+        assert!(!collides(g.map, &across, 0.5));
+        assert!(!line_clear(g.map, &[from[0], from[1] + 0.3, from[2]],
+            &[across[0], across[1] + 0.3, across[2]]));
+        let p = &mut g.players[0];
+        p.st.pos = from;
+        p.yaw = -std::f32::consts::FRAC_PI_2;
+        p.sec = Some(Gun::new(PISTOL_ATK));
+        p.slot = 1;
+        g.drop_active(0);
+        let item = g.items.last().unwrap();
+        assert!((item.pos[0] - from[0]).abs() < 0.001 && (item.pos[2] - from[2]).abs() < 0.001,
+            "throwing a weapon must not bypass thin imported walls");
+        g.items.clear();
+        g.players[0].st.pos = [-42.0, 0.01, -64.0];
+        g.players[0].sec = None;
+        g.drop_item(Gun::new(PISTOL_ATK), [-41.15, 0.01, -64.0], 0);
+        g.pickups();
+        assert!(g.players[0].sec.is_none() && g.items.len() == 1,
+            "nearby weapons across thin imported walls must remain out of reach");
+        g.players[0].st.pos = g.items[0].pos;
+        g.pickups();
+        assert!(g.players[0].sec.is_some() && g.items.is_empty(), "same-side pickup still works");
+    }
+
+    #[test]
+    fn imported_lower_floor_supports_spawns_drops_and_grenades() {
+        let mut g = Game::new();
+        g.change_map(MapId::Dust2);
+        let defender = g.players.iter().find(|p| p.team == DEF).unwrap();
+        let pos = defender.st.pos;
+        let floor = pos[1] - 0.01;
+        assert!(floor < -2.0, "test needs the lower CT floor");
+        g.drop_item(Gun::new(PISTOL_DEF), pos, 0);
+        assert!((g.items.last().unwrap().pos[1] - floor).abs() < 0.02);
+        g.nades.push(Nade { id: 9999, kind: FRAG,
+            pos: [pos[0], pos[1] + 1.0, pos[2]], vel: [0.0, -12.0, 0.0],
+            fuse: 10.0, owner: 0, team: DEF });
+        for _ in 0..180 {
+            g.update_nades(TICK);
+            assert!(g.nades[0].pos[1] >= floor + 0.09, "grenade passed through imported floor");
+        }
+        assert!(g.nades[0].pos[1] < floor + 0.25, "grenade should settle on the lower floor");
     }
 
     #[test]

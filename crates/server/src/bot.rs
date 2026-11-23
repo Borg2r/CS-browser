@@ -89,9 +89,9 @@ pub struct Bot {
     difficulty: Difficulty,
     site: usize,
     bought: bool,
-    path: Vec<[f32; 2]>,
+    path: Vec<[f32; 3]>,
     pi: usize,
-    goal: Option<[f32; 2]>,
+    goal: Option<[f32; 3]>,
     goal_tag: u32,
     hold_t: f32,
     target: Option<u32>,
@@ -107,7 +107,11 @@ pub struct Bot {
     last_pos: [f32; 2],
     look_off: f32,
     look_t: f32,
-    watch: Option<[f32; 2]>,
+    watch: Option<[f32; 3]>,
+}
+
+fn dist(a: &[f32; 3], b: &[f32; 3]) -> f32 {
+    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 
 fn wrap(a: f32) -> f32 {
@@ -147,7 +151,7 @@ impl Bot {
         }
     }
 
-    fn set_goal(&mut self, g: &Game, from: [f32; 2], tag: u32, pick: impl FnOnce() -> [f32; 2]) {
+    fn set_goal(&mut self, g: &Game, from: [f32; 3], tag: u32, pick: impl FnOnce() -> [f32; 3]) {
         if self.goal_tag != tag || self.goal.is_none() {
             let to = pick();
             self.goal_tag = tag;
@@ -310,13 +314,16 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
     // ---- objective
     let planted = g.planted.as_ref().map(|b| b.pos);
     // The carrier always goes to the chosen site; some attackers lurk at the other.
-    let site = &g.map.sites[if team == ATK && has_bomb { g.atk_site } else { bot.site }];
+    let site_index = if team == ATK && has_bomb { g.atk_site } else { bot.site };
+    let site = &g.map.sites[site_index];
+    let site_height = g.map.site_height(site_index);
     let nav = &g.nav;
     let mut r1 = sim_rng(g.rng.next());
     if team == ATK {
         if has_bomb && planted.is_none() && g.phase == Phase::Live {
-            let in_site = g.map.site_at(xz[0], xz[1]).is_some();
-            let arrived = bot.goal.map(|t| (t[0] - xz[0]).hypot(t[1] - xz[1]) < 1.0).unwrap_or(false);
+            let in_site = g.map.site_at(xz[0], xz[1])
+                .is_some_and(|site| (pos[1] - g.map.site_height(site)).abs() < 1.0);
+            let arrived = bot.goal.map(|t| dist(&t, &pos) < 1.0).unwrap_or(false);
             if in_site && arrived && bot.goal_tag == 1 {
                 if best.is_none() {
                     want_slot = 6;
@@ -325,30 +332,30 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
                     busy = true;
                 }
             } else {
-                bot.set_goal(g, xz, 1, || nav.point_in(site, &mut r1));
+                bot.set_goal(g, pos, 1, || nav.point_in(site, site_height, &mut r1));
             }
         } else if let Some(bp) = planted {
-            bot.set_goal(g, xz, 2, || nav.point_near([bp[0], bp[2]], 7.0, &mut r1));
+            bot.set_goal(g, pos, 2, || nav.point_near(bp, 7.0, &mut r1));
         } else {
-            let dropped = g.items.iter().find(|it| it.w == BOMB).map(|it| [it.pos[0], it.pos[2]]);
+            let dropped = g.items.iter().find(|it| it.w == BOMB).map(|it| it.pos);
             let nearest = dropped.map(|d| {
-                let mine = (d[0] - xz[0]).hypot(d[1] - xz[1]);
+                let mine = dist(&d, &pos);
                 !g.players.iter().any(|o| {
-                    o.alive && o.team == ATK && o.id != id && (d[0] - o.st.pos[0]).hypot(d[1] - o.st.pos[2]) < mine
+                    o.alive && o.team == ATK && o.id != id && dist(&d, &o.st.pos) < mine
                 })
             });
             match (dropped, nearest) {
                 (Some(d), Some(true)) => {
-                    if bot.goal.map(|t| (t[0] - d[0]).hypot(t[1] - d[1]) > 0.5).unwrap_or(true) {
+                    if bot.goal.map(|t| dist(&t, &d) > 0.5).unwrap_or(true) {
                         bot.goal = None;
                     }
-                    bot.set_goal(g, xz, 3, || d);
+                    bot.set_goal(g, pos, 3, || d);
                 }
-                _ => bot.set_goal(g, xz, 4, || nav.point_in(site, &mut r1)),
+                _ => bot.set_goal(g, pos, 4, || nav.point_in(site, site_height, &mut r1)),
             }
         }
     } else if let (Some(bp), Phase::Live) = (planted, g.phase) {
-        let d = (bp[0] - xz[0]).hypot(bp[2] - xz[1]);
+        let d = dist(&bp, &pos);
         if d < 1.4 {
             if best.map(|b| b.1 > 12.0).unwrap_or(true) || g.players[i].defuse_t > 0.0 {
                 buttons |= B_USE;
@@ -357,10 +364,10 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
                 best = None;
             }
         } else {
-            bot.set_goal(g, xz, 5, || [bp[0], bp[2]]);
+            bot.set_goal(g, pos, 5, || bp);
         }
     } else {
-        bot.set_goal(g, xz, 6, || nav.point_in(site, &mut r1));
+        bot.set_goal(g, pos, 6, || nav.point_in(site, site_height, &mut r1));
     }
 
     // ---- combat
@@ -430,7 +437,7 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
         // ---- navigation
         let mut moving = false;
         if let Some(goal) = bot.goal {
-            let dg = (goal[0] - xz[0]).hypot(goal[1] - xz[1]);
+            let dg = dist(&goal, &pos);
             if dg < 0.7 || bot.pi >= bot.path.len() {
                 // Arrived: hold a while, then pick a new spot (roaming goals only).
                 bot.hold_t += dt;
@@ -443,7 +450,7 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
             } else {
                 while bot.pi + 1 < bot.path.len() {
                     let n = bot.path[bot.pi];
-                    if (n[0] - xz[0]).hypot(n[1] - xz[1]) < 0.6 {
+                    if dist(&n, &pos) < 0.65 {
                         bot.pi += 1;
                     } else {
                         break;
@@ -452,13 +459,13 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
                 // Look ahead for a straight shortcut.
                 for ahead in [6usize, 3] {
                     let k = (bot.pi + ahead).min(bot.path.len() - 1);
-                    if k > bot.pi && g.nav.walk_clear(g.map, xz, bot.path[k]) {
+                    if k > bot.pi && g.nav.walk_clear(g.map, pos, bot.path[k]) {
                         bot.pi = k;
                         break;
                     }
                 }
                 let n = bot.path[bot.pi];
-                want_yaw = (-(n[0] - xz[0])).atan2(-(n[1] - xz[1]));
+                want_yaw = (-(n[0] - xz[0])).atan2(-(n[2] - xz[1]));
                 turn_rate = 9.0;
                 if wrap(want_yaw - yaw).abs() < 1.2 {
                     buttons |= B_FWD;
@@ -485,12 +492,12 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
             }
             // Watch the route the enemy would take to get here.
             if bot.watch.is_none() {
-                let foe = g.map.spawns[if team == ATK { 1 } else { 0 }][0];
-                let route = g.nav.path(xz, foe);
+                let foe = g.map.spawn_position(if team == ATK { 1 } else { 0 }, 0);
+                let route = g.nav.path(pos, foe);
                 bot.watch = Some(route.get(7.min(route.len().saturating_sub(1))).copied().unwrap_or(foe));
             }
-            let focus = bot.watch.unwrap_or(xz);
-            want_yaw = (-(focus[0] - xz[0])).atan2(-(focus[1] - xz[1])) + bot.look_off * 0.6;
+            let focus = bot.watch.unwrap_or(pos);
+            want_yaw = (-(focus[0] - xz[0])).atan2(-(focus[2] - xz[1])) + bot.look_off * 0.6;
             turn_rate = 3.0;
         }
         if g.players[i].gun().map(|x| x.ammo * 3 < WEAPONS[x.w].mag && x.reserve > 0).unwrap_or(false) {
@@ -501,7 +508,6 @@ fn run(g: &mut Game, i: usize, dt: f32, bot: &mut Bot) {
     if g.players[i].slot != want_slot {
         g.select_slot(i, want_slot);
     }
-    let _ = pos;
     let p = &mut g.players[i];
     p.yaw = wrap(turn(yaw, want_yaw, turn_rate * dt));
     p.pitch = turn(pitch, want_pitch, turn_rate * dt).clamp(-1.5, 1.5);
@@ -545,7 +551,7 @@ mod tests {
         // Suppress random aim/strafe samples for an isolated reaction test.
         bot.err_t = 99.0;
         bot.strafe_t = 99.0;
-        bot.goal = Some([0.0, 24.0]);
+        bot.goal = Some([0.0, 0.02, 24.0]);
         bot.goal_tag = 4;
         g.players[0].yaw = 0.0;
         g.players[0].pitch = (H_STAND * difficulty.profile(bot.skill).aim_height - EYE_STAND).atan2(20.0);
@@ -562,6 +568,47 @@ mod tests {
             }
         }
         panic!("bot never fired at a visible opponent");
+    }
+
+    #[test]
+    fn bots_navigate_imported_elevation_changes_to_both_sites() {
+        let mut g = Game::new();
+        g.map = sim::map::map_by_id(sim::map::MapId::Dust2);
+        g.nav = crate::nav::Nav::build(g.map);
+        g.players.truncate(1);
+        g.phase = Phase::Live;
+        for team in [ATK, DEF] {
+            for site in 0..2 {
+                g.atk_site = site;
+                g.alert = None;
+                let p = &mut g.players[0];
+                p.team = team;
+                p.alive = true;
+                p.has_bomb = team == ATK;
+                p.st = PState { pos: g.map.spawn_position((team - 1) as usize, 0), ..PState::default() };
+                p.yaw = 0.0;
+                let from = p.st.pos;
+                let center = g.map.sites[site].center();
+                let target = [center[0], g.map.site_height(site) + 0.02, center[1]];
+                let mut bot = Bot::new(0.5);
+                bot.reset(site);
+                bot.set_goal(&g, from, if team == ATK { 1 } else { 6 }, || target);
+                g.players[0].bot = Some(Box::new(bot));
+                let mut arrived = false;
+                for _ in 0..120 * 60 {
+                    think(&mut g, 0, TICK);
+                    let p = &mut g.players[0];
+                    let speed = p.max_speed();
+                    step(g.map, &mut p.st, p.buttons, p.yaw, TICK, speed);
+                    if g.map.sites[site].contains(p.st.pos[0], p.st.pos[2])
+                        && (p.st.pos[1] - g.map.site_height(site)).abs() < 0.7 {
+                        arrived = true;
+                        break;
+                    }
+                }
+                assert!(arrived, "team {team} bot stuck at {:?} travelling to site {site}", g.players[0].st.pos);
+            }
+        }
     }
 
     #[test]

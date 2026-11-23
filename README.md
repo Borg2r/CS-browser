@@ -57,7 +57,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 
 ## Game
 
-- Five operations with protected spawns, multiple approaches and two bomb sites:
+- Six operations with protected spawns, multiple approaches and two bomb sites:
   **Sirocco**, the expanded desert town; **Dockyard**, the original container
   terminal with wider quays; **Norheim**, an office operation based on the actual
   Kontor Norheim model; and **Meridian**, a cargo ship with side decks, cargo
@@ -68,6 +68,10 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   annex and outdoor cooling/generator yard. The footprint is enlarged for
   readable routes and combat, with a single playable ground level. See
   [NORD_MAP.md](NORD_MAP.md) for the source-to-game mapping.
+  **Dust2** uses the uploaded classic map's original mesh and all 34 textures,
+  including tunnels, ramps, stairs and both bomb sites. Native and WASM physics
+  share the same triangle collision; bots navigate connected floor levels.
+  See [DUST2_MAP.md](DUST2_MAP.md) for provenance and rebuilding the assets.
 - The first player chooses the map before joining. The host can switch maps
   through **Esc → Map selection → Start selected map**. This starts a new match for
   everyone, resetting scores and equipment while keeping connected players,
@@ -75,7 +79,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
 - Spawn courtyards block direct and wall-penetrating shots from opposing spawns,
   including jumping sightlines. Bots can reach both objectives on every map.
 - Detailed procedural weapons and operators, articulated equipment, warm desert
-  lighting, and architectural scenery. No external model downloads are needed.
+  lighting, and architectural scenery. All assets are served with the game.
 - Operators have shaped plate carriers, stitched uniforms, magazine pouches,
   belt equipment, fitted boots and detailed headgear. Tan attackers wear wrapped
   cloth and goggles; navy defenders have helmets, headsets and face coverings.

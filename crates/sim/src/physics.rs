@@ -1,4 +1,4 @@
-//! Player movement and collision against the box world, plus ray casts.
+//! Player movement and collision against box and imported mesh worlds, plus rays.
 //! Deterministic for a given (state, buttons, yaw, dt) so the client can
 //! predict with the very same code the server is authoritative with.
 use crate::map::Map;
@@ -87,7 +87,105 @@ fn overlaps(map: &Map, pos: &V3, h: f32, mut f: impl FnMut(&crate::map::Aabb)) {
 pub fn collides(map: &Map, pos: &V3, h: f32) -> bool {
     let mut hit = false;
     overlaps(map, pos, h, |_| hit = true);
+    hit || map.mesh.as_ref().is_some_and(|mesh| mesh.overlaps_box(
+        [pos[0] - HALF_W, pos[1], pos[2] - HALF_W],
+        [pos[0] + HALF_W, pos[1] + h, pos[2] + HALF_W],
+    ))
+}
+
+/// Continuous world collision for a feet-centered box. Also useful for small
+/// moving objects: the same geometry stops grenades and players.
+pub fn sweep_box(map: &Map, pos: V3, delta: V3, half_width: f32, height: f32) -> Option<crate::mesh::MeshHit> {
+    let mut best = map.mesh.as_ref().and_then(|mesh| mesh.sweep_box(pos, delta, half_width, height));
+    for b in &map.boxes {
+        let min = [b.min[0]-half_width, b.min[1]-height, b.min[2]-half_width];
+        let max = [b.max[0]+half_width, b.max[1], b.max[2]+half_width];
+        if let Some((enter, _)) = ray_aabb_span(&pos, &delta, &min, &max) {
+            if enter > 1.0 || best.is_some_and(|hit| enter >= hit.fraction) { continue; }
+            // Resolve the entering face, ignoring an existing contact when the
+            // requested motion is parallel to it or away from it.
+            let mut normal = [0.0; 3];
+            let mut entry = f32::NEG_INFINITY;
+            for axis in 0..3 {
+                if delta[axis].abs() < 1e-9 { continue; }
+                let edge = if delta[axis] > 0.0 { min[axis] } else { max[axis] };
+                let t = (edge-pos[axis])/delta[axis];
+                if t > entry {
+                    entry = t;
+                    normal = [0.0; 3];
+                    normal[axis] = -delta[axis].signum();
+                }
+            }
+            if entry >= -1e-5 {
+                best = Some(crate::mesh::MeshHit { fraction: enter, normal });
+            }
+        }
+    }
+    best
+}
+
+const STEP_HEIGHT: f32 = 0.5;
+
+fn move_mesh_axis(map: &Map, pos: &mut V3, axis: usize, amount: f32, height: f32) -> Option<crate::mesh::MeshHit> {
+    if amount.abs() < 1e-8 { return None; }
+    let mut delta = [0.0; 3];
+    delta[axis] = amount;
+    let hit = sweep_box(map, *pos, delta, HALF_W, height);
+    let fraction = hit.map_or(1.0, |h| (h.fraction - EPS/amount.abs()).max(0.0));
+    pos[axis] += amount * fraction;
     hit
+}
+
+/// Mesh maps contain real elevations. Sweep continuously, try a short stair
+/// step when grounded, and retain contact while descending stairs and ramps.
+fn move_mesh(map: &Map, s: &mut PState, dt: f32, height: f32) {
+    let grounded = s.ground && s.vel[1] <= 0.0;
+    let start = s.pos;
+    let dx = s.vel[0] * dt;
+    let dz = s.vel[2] * dt;
+    let blocked_x = move_mesh_axis(map, &mut s.pos, 0, dx, height).is_some();
+    let blocked_z = move_mesh_axis(map, &mut s.pos, 2, dz, height).is_some();
+    let mut stepped = false;
+    if grounded && (blocked_x || blocked_z) {
+        let mut candidate = start;
+        move_mesh_axis(map, &mut candidate, 1, STEP_HEIGHT, height);
+        let rise = candidate[1] - start[1];
+        if rise > EPS {
+            move_mesh_axis(map, &mut candidate, 0, dx, height);
+            move_mesh_axis(map, &mut candidate, 2, dz, height);
+            let floor = move_mesh_axis(map, &mut candidate, 1, -(rise + STEP_HEIGHT), height);
+            let progress = |p: V3| (p[0]-start[0])*dx + (p[2]-start[2])*dz;
+            if floor.is_some_and(|h| h.normal[1] >= 0.65)
+                && candidate[1] <= start[1] + STEP_HEIGHT + EPS
+                && progress(candidate) > progress(s.pos) + 1e-7
+                && !collides(map, &candidate, height)
+            {
+                s.pos = candidate;
+                s.vel[1] = 0.0;
+                stepped = true;
+            }
+        }
+    }
+    if !stepped {
+        if blocked_x { s.vel[0] = 0.0; }
+        if blocked_z { s.vel[2] = 0.0; }
+    }
+    s.ground = stepped;
+    let vertical = s.vel[1] * dt;
+    if let Some(hit) = move_mesh_axis(map, &mut s.pos, 1, vertical, height) {
+        s.vel[1] = 0.0;
+        s.ground = vertical < 0.0 && hit.normal[1] >= 0.65;
+    }
+    if grounded && !s.ground && s.vel[1] <= 0.0 {
+        let mut candidate = s.pos;
+        if let Some(hit) = move_mesh_axis(map, &mut candidate, 1, -STEP_HEIGHT, height) {
+            if hit.normal[1] >= 0.65 {
+                s.pos = candidate;
+                s.vel[1] = 0.0;
+                s.ground = true;
+            }
+        }
+    }
 }
 
 fn accelerate(vel: &mut V3, wx: f32, wz: f32, wish_speed: f32, cap: f32, accel: f32, dt: f32) {
@@ -145,6 +243,11 @@ fn substep(map: &Map, s: &mut PState, buttons: u32, yaw: f32, dt: f32, max_speed
     }
     s.jump_held = jump;
     s.vel[1] = (s.vel[1] - GRAVITY * dt).max(-40.0);
+
+    if map.mesh.is_some() {
+        move_mesh(map, s, dt, h);
+        return;
+    }
 
     // Move and resolve one axis at a time (x, z, then y).
     for axis in [0usize, 2, 1] {
@@ -238,6 +341,11 @@ pub fn ray_world_hit(map: &Map, o: &V3, d: &V3, max_t: f32) -> (f32, Option<f32>
             }
         }
     }
+    if let Some(hit) = map.mesh.as_ref().and_then(|mesh| mesh.raycast(o, d, best.0)) {
+        // BSP exports are visible surface shells, not closed brush solids. A
+        // missing back face cannot establish a safe wall-penetration thickness.
+        best = (hit.distance, Some(f32::INFINITY));
+    }
     best
 }
 
@@ -268,6 +376,9 @@ pub fn ray_world(map: &Map, o: &V3, d: &V3, max_t: f32) -> f32 {
                 best = t;
             }
         }
+    }
+    if let Some(hit) = map.mesh.as_ref().and_then(|mesh| mesh.raycast(o, d, best)) {
+        best = hit.distance;
     }
     best
 }
@@ -323,5 +434,102 @@ mod tests {
         let lim_z = m.h as f32;
         assert!(s.pos[0].abs() < lim_x && s.pos[2].abs() < lim_z);
         assert!(!collides(m, &s.pos, s.height()));
+    }
+
+    fn mesh_map(triangles: &[[V3; 3]]) -> Map {
+        let mut map = Map::build();
+        map.boxes.clear();
+        let bytes: Vec<u8> = triangles.iter().flatten().flatten().flat_map(|v| v.to_le_bytes()).collect();
+        map.mesh = Some(crate::mesh::CollisionMesh::from_bytes(&bytes));
+        map
+    }
+
+    fn floor(x0: f32, x1: f32, y: f32) -> [[V3; 3]; 2] {
+        [
+            [[x0, y, -3.0], [x0, y, 3.0], [x1, y, -3.0]],
+            [[x1, y, -3.0], [x0, y, 3.0], [x1, y, 3.0]],
+        ]
+    }
+
+    #[test]
+    fn mesh_stairs_are_walkable_in_both_directions_without_jump() {
+        let mut triangles = Vec::new();
+        triangles.extend(floor(-10.0, 0.0, 0.0));
+        triangles.extend(floor(0.0, 10.0, 0.3));
+        triangles.extend([
+            [[0.0, 0.0, -3.0], [0.0, 0.3, -3.0], [0.0, 0.3, 3.0]],
+            [[0.0, 0.0, -3.0], [0.0, 0.3, 3.0], [0.0, 0.0, 3.0]],
+        ]);
+        let map = mesh_map(&triangles);
+        let mut state = PState { pos: [-2.0, EPS, 0.0], ground: true, ..Default::default() };
+        for _ in 0..60 { step(&map, &mut state, B_FWD, -std::f32::consts::FRAC_PI_2, 1.0/60.0, 6.35); }
+        assert!(state.pos[0] > 2.0 && (state.pos[1]-0.301).abs()<0.01 && state.ground, "ascending {state:?}");
+        for _ in 0..80 { step(&map, &mut state, B_BACK, -std::f32::consts::FRAC_PI_2, 1.0/60.0, 6.35); }
+        assert!(state.pos[0] < -1.0 && state.pos[1]<0.01 && state.ground, "descending {state:?}");
+        assert!(!collides(&map, &state.pos, state.height()));
+    }
+
+    #[test]
+    fn mesh_ramps_support_full_player_footprint_and_allow_jumps() {
+        let mut triangles = Vec::new();
+        triangles.extend(floor(-10.0, 0.0, 0.0));
+        triangles.extend([
+            [[0.0, 0.0, -3.0], [0.0, 0.0, 3.0], [4.0, 2.0, -3.0]],
+            [[4.0, 2.0, -3.0], [0.0, 0.0, 3.0], [4.0, 2.0, 3.0]],
+        ]);
+        triangles.extend(floor(4.0, 10.0, 2.0));
+        let map = mesh_map(&triangles);
+        let mut state = PState { pos: [-2.0, EPS, 0.0], ground: true, ..Default::default() };
+        for _ in 0..100 {
+            step(&map, &mut state, B_FWD, -std::f32::consts::FRAC_PI_2, 1.0/60.0, 6.35);
+            assert!(!collides(&map, &state.pos, state.height()), "{state:?}");
+        }
+        assert!(state.pos[0]>5.0 && (state.pos[1]-2.001).abs()<0.01 && state.ground, "{state:?}");
+        step(&map, &mut state, B_JUMP, 0.0, 1.0/60.0, 6.35);
+        assert!(state.pos[1]>2.05 && !state.ground && state.vel[1]>0.0, "{state:?}");
+    }
+
+    #[test]
+    fn dust2_import_has_real_multilevel_floors_and_mesh_shot_cover() {
+        let map = crate::map::map_by_id(crate::map::MapId::Dust2);
+        let mesh = map.mesh.as_ref().unwrap();
+        for (x,z,y) in [(-25.5,20.0,3.2),(0.0,-54.0,-3.2),(28.8,-60.4,2.4),(-40.0,-67.2,0.0)] {
+            let support=mesh.standing_height(x,z,y,0.3,0.3,HALF_W,H_STAND).expect("imported spawn/site support");
+            assert!((support-y).abs()<0.01,"{x} {z}: {support}");
+            let mut state=PState{pos:[x,y+0.4,z],..Default::default()};
+            for _ in 0..60 {step(map,&mut state,0,0.0,1.0/60.0,6.35);}
+            assert!(state.ground && (state.pos[1]-y).abs()<0.01,"{state:?}");
+            assert!(!collides(map,&state.pos,H_STAND));
+            assert!((ray_world(map,&[x,y+2.0,z],&[0.0,-1.0,0.0],5.0)-2.0).abs()<0.01);
+        }
+        let a=[-25.5,4.82,20.0];
+        let b=[0.0,-1.58,-54.0];
+        assert!(!line_clear(map,&a,&b),"uploaded world must shield the two actual spawn regions");
+    }
+
+    #[test]
+    fn dust2_actual_t_spawn_ramp_short_stairs_and_tunnel_stairs_are_walkable() {
+        let map=crate::map::map_by_id(crate::map::MapId::Dust2);
+        let mesh=map.mesh.as_ref().unwrap();
+        for (name, start, end, reference_y, final_y) in [
+            ("T spawn ramp",[-14.0,20.0],[-3.0,20.0],3.2,0.85),
+            ("short stairs",[10.0,-40.0],[10.0,-46.0],0.0,2.4),
+            ("lower tunnel stairs",[-27.0,-28.0],[-33.0,-28.0],-1.2,0.8),
+        ] {
+            let y=mesh.standing_height(start[0],start[1],reference_y,0.5,0.5,HALF_W,H_STAND).unwrap();
+            let mut state=PState{pos:[start[0],y+EPS,start[1]],ground:true,..Default::default()};
+            let dx: f32=end[0]-start[0];
+            let dz: f32=end[1]-start[1];
+            let yaw=(-dx).atan2(-dz);
+            let length=dx.hypot(dz);
+            for _ in 0..600 {
+                let progress=((state.pos[0]-start[0])*dx+(state.pos[2]-start[1])*dz)/length;
+                if progress>=length { break; }
+                step(map,&mut state,B_FWD,yaw,1.0/60.0,3.0);
+                assert!(!collides(map,&state.pos,H_STAND),"{name}: {state:?}");
+            }
+            assert!((state.pos[0]-end[0]).hypot(state.pos[2]-end[1])<0.15,"{name}: {state:?}");
+            assert!((state.pos[1]-final_y).abs()<0.1 && state.ground,"{name}: {state:?}");
+        }
     }
 }

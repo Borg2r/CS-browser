@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const base = new URL(process.argv[2] || 'http://127.0.0.1:8088');
 assert.ok(['http:', 'https:'].includes(base.protocol));
-const ids = ['sirocco', 'dockyard', 'norheim', 'meridian', 'nord_datacenter'];
+const ids = ['sirocco', 'dockyard', 'norheim', 'meridian', 'nord_datacenter', 'dust2'];
 const clients = [];
 let wasm;
 
@@ -31,9 +31,20 @@ function validateHello(hello) {
   const metadata = hello.maps.find(entry => entry.id === map.id);
   assert.ok(metadata, 'active map belongs to catalog');
   for (const key of ['id', 'index', 'name', 'theme', 'description']) assert.equal(map[key], metadata[key]);
-  assert.ok(map.w > 10 && map.h > 10 && map.boxes.length > 10, 'playable collision geometry');
+  assert.ok(map.w > 10 && map.h > 10, 'playable map dimensions');
+  if (map.collision === 'mesh') {
+    assert.equal(map.id, 'dust2');
+    assert.ok(map.collisionSamples.length >= 4, 'native mesh floor samples include both spawns and sites');
+    assert.ok(map.collisionSamples.every(point => point.length === 3 && point.every(Number.isFinite)));
+    assert.ok(new Set(map.collisionSamples.map(point => Math.round(point[1] * 10))).size >= 3,
+      'imported map preserves distinct floor elevations');
+  } else {
+    assert.ok(map.boxes.length > 10, 'playable collision boxes');
+  }
   assert.ok(map.boxes.every(box => box.length === 8 && box.every(Number.isFinite)));
   assert.equal(map.sites.length, 2);
+  assert.equal(map.siteHeights.length, 2);
+  assert.ok(map.siteHeights.every(Number.isFinite));
 }
 
 async function connect(name) {
@@ -134,6 +145,16 @@ function checkPredictionGeometry(map) {
   assert.equal(wasm.select_map(999), 0, 'invalid map index rejected');
   assert.deepEqual([...state()], [1, 2, 3, 4, 5, 6, 1, 0, 1], 'invalid selection preserves state');
   assert.equal(wasm.select_map(map.index), 1);
+  if (map.collision === 'mesh') {
+    for (const [x, y, z] of map.collisionSamples) {
+      state().set([x, y + 0.05, z, 0, -1, 0, 0, 0, 0]);
+      for (let step = 0; step < 30; step++) wasm.sim_step(0, 0, 1 / 60, 6);
+      assert.ok(Math.abs(state()[1] - (y + 0.001)) < 0.01,
+        `${map.id}: WASM mesh floor matches native at ${x}, ${y}, ${z}: ${state()[1]}`);
+      assert.equal(state()[6], 1, 'prediction settles on the imported mesh');
+    }
+    return;
+  }
   // Drop the player onto surfaces described by the native server. Their varied
   // positions/heights distinguish each map's compiled collision from Sirocco.
   const surfaces = map.boxes.filter(box => box[4] > 1 && box[3] - box[0] >= 1 && box[5] - box[2] >= 1);
@@ -219,10 +240,13 @@ try {
     await updated(before, map, host, true);
     checkFreshMatch(host, guest);
     const metadata = host.hellos.at(-1).map;
-    geometry.add(JSON.stringify(metadata.boxes));
+    geometry.add(JSON.stringify([metadata.boxes, metadata.collisionSamples]));
     checkPredictionGeometry(metadata);
+    const spawnHeight = host.snapshot.me.st[1];
     for (let step = 0; step < 4; step++) await predictInput(host, 0, map);
-    assert.ok(Math.abs(host.snapshot.me.st[1] - 0.001) < 0.003, 'native player settles on spawn floor');
+    assert.equal(host.snapshot.me.st[6], 1, 'native player settles on spawn floor');
+    assert.ok(Math.abs(host.snapshot.me.st[1] - spawnHeight) < 0.02, 'spawn height matches supporting floor');
+    if (map !== 'dust2') assert.ok(Math.abs(host.snapshot.me.st[1] - 0.001) < 0.003);
     await until(() => host.snapshot.ph === 1, `${map}: freeze ends`, 10000);
     const start = host.snapshot.me.st.slice(0, 3);
     for (let step = 0; step < 4; step++) await predictInput(host, 1, map);

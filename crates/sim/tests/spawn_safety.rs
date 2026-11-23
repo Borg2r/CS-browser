@@ -31,10 +31,12 @@ fn exposed_spawn_pairs(map: &Map) -> (usize, usize) {
     assert!(map.spawns.iter().all(|team| !team.is_empty()));
     let mut directly_exposed = 0;
     let mut bullet_reachable = 0;
-    for a in &map.spawns[0] {
-        for b in &map.spawns[1] {
-            let a = [a[0], EYE_STAND, a[1]];
-            let b = [b[0], EYE_STAND, b[1]];
+    for a in 0..map.spawns[0].len() {
+        for b in 0..map.spawns[1].len() {
+            let mut a = map.spawn_position(0, a);
+            let mut b = map.spawn_position(1, b);
+            a[1] += EYE_STAND;
+            b[1] += EYE_STAND;
             let forward = shot_reaches(map, a, b);
             let reverse = shot_reaches(map, b, a);
             directly_exposed += usize::from(forward.0 || reverse.0);
@@ -66,7 +68,12 @@ fn every_maps_spawn_markers_fit_distinct_standing_players() {
         for (team, spawns) in map.spawns.iter().enumerate() {
             assert!(spawns.len() >= 5, "{} team {team}: fewer than five spawn markers", id.id());
             for (index, &spawn) in spawns.iter().enumerate() {
-                assert!(walk_clear(map, spawn, spawn), "{}: obstructed spawn {spawn:?}", id.id());
+                let position = map.spawn_position(team, index);
+                assert!(walk_clear(map, position, position).is_some(), "{}: obstructed spawn {position:?}", id.id());
+                let mut standing = PState { pos: position, ..PState::default() };
+                for _ in 0..30 { step(map, &mut standing, 0, 0.0, 1.0 / 60.0, 6.0); }
+                assert!(standing.ground && (standing.pos[1] - position[1]).abs() < 0.02,
+                    "{}: spawn is not supported by its floor: {position:?} -> {:?}", id.id(), standing.pos);
                 for other in &spawns[index + 1..] {
                     let separated = (spawn[0] - other[0]).abs() >= 2.0 * HALF_W
                         || (spawn[1] - other[1]).abs() >= 2.0 * HALF_W;
@@ -79,87 +86,78 @@ fn every_maps_spawn_markers_fit_distinct_standing_players() {
 
 // A nearby sample must be reachable on foot, rather than lying on the other side
 // of a room's wall. This checks the full player collision box along the segment.
-fn walk_clear(map: &Map, from: [f32; 2], to: [f32; 2]) -> bool {
-    let distance = ((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt();
+fn walk_clear(map: &Map, from: V3, to: V3) -> Option<V3> {
+    let distance = ((to[0] - from[0]).powi(2) + (to[2] - from[2]).powi(2)).sqrt();
     let steps = (distance / 0.25).ceil().max(1.0) as usize;
-    (0..=steps).all(|i| {
+    let mut position = from;
+    for i in 0..=steps {
         let t = i as f32 / steps as f32;
-        let position = [
-            from[0] + (to[0] - from[0]) * t,
-            0.001,
-            from[1] + (to[1] - from[1]) * t,
-        ];
-        !collides(map, &position, H_STAND)
-    })
+        let x = from[0] + (to[0] - from[0]) * t;
+        let z = from[2] + (to[2] - from[2]) * t;
+        let floor = map.surface_height(x, z, position[1])?;
+        // Adjacent sample floors must be traversable on foot, including ramps,
+        // without silently moving between a tunnel and the deck above it.
+        if (floor - position[1]).abs() > 0.51 { return None; }
+        position = [x, floor + 0.001, z];
+        if collides(map, &position, H_STAND) { return None; }
+    }
+    Some(position)
 }
 
-fn spawn_room_samples(map: &Map, team: usize) -> Vec<[f32; 2]> {
+fn spawn_room_samples(map: &Map, team: usize) -> Vec<V3> {
     assert!(!map.spawns[team].is_empty());
     let mut samples = Vec::new();
-    let mut add = |point: [f32; 2]| {
-        if !samples.iter().any(|p: &[f32; 2]| {
-            (p[0] - point[0]).abs() < 0.01 && (p[1] - point[1]).abs() < 0.01
+    let mut add = |point: V3| {
+        if !samples.iter().any(|p: &V3| {
+            (0..3).all(|axis| (p[axis] - point[axis]).abs() < 0.01)
         }) {
             samples.push(point);
         }
     };
     // Every spawn marker and the walkable space two metres around it.
-    for &spawn in &map.spawns[team] {
-        assert!(
-            walk_clear(map, spawn, spawn), "spawn is inside collision: {spawn:?}"
-        );
+    for index in 0..map.spawns[team].len() {
+        let spawn = map.spawn_position(team, index);
+        assert!(walk_clear(map, spawn, spawn).is_some(), "spawn is inside collision: {spawn:?}");
         for dx in [-2.0, 0.0, 2.0] {
             for dz in [-2.0, 0.0, 2.0] {
-                let point = [spawn[0] + dx, spawn[1] + dz];
-                if walk_clear(map, spawn, point) {
-                    add(point);
-                }
+                let point = [spawn[0] + dx, spawn[1], spawn[2] + dz];
+                if let Some(point) = walk_clear(map, spawn, point) { add(point); }
             }
         }
     }
     // Probe the courtyard from its spawn centroid out to its collision walls.
     // Sampling the midpoint and far edge covers lateral strafing room without
     // encoding this particular map's dimensions, buildings or tile layout.
-    let center = std::array::from_fn(|axis| {
-        map.spawns[team].iter().map(|p| p[axis]).sum::<f32>() / map.spawns[team].len() as f32
+    let center: V3 = std::array::from_fn(|axis| {
+        (0..map.spawns[team].len()).map(|i| map.spawn_position(team, i)[axis]).sum::<f32>()
+            / map.spawns[team].len() as f32
     });
-    assert!(walk_clear(map, center, center));
+    assert!(walk_clear(map, center, center).is_some());
     for direction in [[-1.0, 0.0], [1.0, 0.0], [0.0, -1.0], [0.0, 1.0]] {
         let mut extent = 0.0;
         for i in 1..=(map.w.max(map.h) * 4) {
             let distance = i as f32 * 0.5;
-            let point = [
-                center[0] + direction[0] * distance,
-                center[1] + direction[1] * distance,
-            ];
-            if !walk_clear(map, center, point) {
-                break;
-            }
+            let point = [center[0] + direction[0] * distance, center[1], center[2] + direction[1] * distance];
+            if walk_clear(map, center, point).is_none() { break; }
             extent = distance;
         }
         for distance in [extent * 0.5, extent] {
-            add([
-                center[0] + direction[0] * distance,
-                center[1] + direction[1] * distance,
-            ]);
+            let point = [center[0] + direction[0] * distance, center[1], center[2] + direction[1] * distance];
+            if let Some(point) = walk_clear(map, center, point) { add(point); }
         }
     }
     samples
 }
 
-fn stances(map: &Map, point: [f32; 2]) -> [PState; 3] {
-    let standing = PState {
-        pos: [point[0], 0.001, point[1]], ground: true, ..PState::default()
-    };
+fn stances(map: &Map, point: V3) -> [PState; 3] {
+    let standing = PState { pos: point, ground: true, ..PState::default() };
     let crouching = PState { crouch: true, ..standing };
     let mut jumping = standing;
     let mut apex = standing;
     // Use real movement to get an attainable jump height, including ceilings.
     for _ in 0..90 {
         step(map, &mut jumping, B_JUMP, 0.0, 1.0 / 120.0, 6.0);
-        if jumping.pos[1] > apex.pos[1] {
-            apex = jumping;
-        }
+        if jumping.pos[1] > apex.pos[1] { apex = jumping; }
     }
     [standing, crouching, apex]
 }

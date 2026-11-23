@@ -50,11 +50,17 @@ $('sens').oninput = $('vol').oninput = $('name').onchange = applySettings; apply
 let wasm = null, predictedMap = null;
 let loadingError = '';
 let serverReady = false;
+let mapReady = false, mapLoadError = '', mapLoadVersion = 0;
 function updateReady() {
-  const ready = !!wasm && predictedMap === hello?.map.id && serverReady && !!settings.state && ws?.readyState === WebSocket.OPEN;
+  const ready = !!wasm && mapReady && predictedMap === hello?.map.id && serverReady && !!settings.state && ws?.readyState === WebSocket.OPEN;
   for (const button of document.querySelectorAll('.teams button')) button.disabled = !ready;
-  $('status').textContent = loadingError || (ready ? 'Connected — pick a side' : !wasm ? 'Loading game…' : 'Connecting to server…');
+  $('status').textContent = loadingError || mapLoadError || (ready ? 'Connected — pick a side' : !wasm ? 'Loading game…' : hello && !mapReady ? `Loading ${hello.map.name}…` : 'Connecting to server…');
+  const loadingMap = !!hello && !mapReady;
+  $('map-loading').classList.toggle('hidden', !loadingMap);
+  $('map-loading-message').textContent = mapLoadError || (hello ? `Loading ${hello.map.name}…` : 'Loading map…');
+  $('map-loading-retry').classList.toggle('hidden', !mapLoadError);
 }
+$('map-loading-retry').onclick = () => location.reload();
 function selectPredictionMap() {
   if (!wasm || !hello || predictedMap === hello.map.id) return;
   if (wasm.select_map(hello.map.index) !== 1) throw new Error('Unknown prediction map');
@@ -70,7 +76,16 @@ function installMap(message) {
     aimBlend = punch = punchYaw = shotsC = 0; recoilWeapon = -1;
     handShots.fill(0); handSince.fill(9);
     hud.toggleBuy(false); if (hud.wheelOpen) hud.closeWheel();
-    world.buildMap(message.map);
+    mapReady = false; mapLoadError = '';
+    const version = ++mapLoadVersion;
+    Promise.resolve(world.buildMap(message.map)).then(loaded => {
+      if (version !== mapLoadVersion || loaded === false) return;
+      mapReady = true; updateReady();
+    }).catch(error => {
+      if (version !== mapLoadVersion) return;
+      mapLoadError = `Could not load ${message.map.name}. Reload to try again.`;
+      console.error(error); updateReady();
+    });
     $('killfeed').replaceChildren(); $('center').textContent = '';
     selectPredictionMap();
   }
@@ -153,7 +168,7 @@ connect();
 for (const b of document.querySelectorAll('.teams button')) {
   b.onclick = () => {
     sfx.unlock(); applySettings();
-    if (!hello || !wasm) { $('status').textContent = 'Still loading…'; return; }
+    if (!hello || !wasm || !mapReady || !serverReady) { updateReady(); return; }
     send({ t: 'join', name: $('name').value.trim() || 'Player', team: +b.dataset.team, difficulty: settings.joinPreference, map: settings.joinMapPreference });
     captureMouse();
   };
@@ -365,7 +380,7 @@ document.addEventListener('keyup', e => {
 window.addEventListener('blur', () => { keys.clear(); mouseB = 0; if (hud.wheelOpen) hud.closeWheel(); });
 
 function buttons() {
-  if (!locked() || settings.open || chatOpen || hud.buyOpen) return 0;
+  if (!mapReady || !locked() || settings.open || chatOpen || hud.buyOpen) return 0;
   const k = c => keys.has(c);
   let b = 0;
   if (k('KeyW') || k('ArrowUp')) b |= B.FWD;
@@ -403,11 +418,13 @@ function frame(tms) {
   const dt = round4(Math.max(0.001, Math.min(0.2, now - last))); last = now;
   const cam = world.camera;
 
-  if (!joined || !latest) {
+  if (!joined || !latest || !mapReady) {
     const a = now * 0.06;
     const radius = world.overviewRadius || 62, height = world.overviewHeight || 46;
-    cam.position.set(Math.sin(a) * radius, height, Math.cos(a) * radius); cam.lookAt(0, 0, 0);
-    if (latest && hello) drawRemote(now, dt, -1);
+    const target = world.overviewTarget || { x: 0, y: 0, z: 0 };
+    cam.position.set(target.x + Math.sin(a) * radius, target.y + height, target.z + Math.cos(a) * radius);
+    cam.lookAt(target.x, target.y, target.z);
+    if (latest && hello && mapReady) drawRemote(now, dt, -1);
     aimBlend = 0;
     world.render(dt, { firstPerson: false, aim: 0 });
     return;
@@ -479,7 +496,11 @@ function frame(tms) {
         viewAiming = !!(t.flags & 4) && viewWeapon.ads && !viewWeapon.dual;
         world.setViewmodel(viewWeapon);
       }
-    } else { cam.position.set(0, (world.overviewHeight || 46) * 1.3, (world.overviewRadius || 62) * .65); cam.lookAt(0, 0, 0); }
+    } else {
+      const target = world.overviewTarget || { x: 0, y: 0, z: 0 };
+      cam.position.set(target.x, target.y + (world.overviewHeight || 46) * 1.3, target.z + (world.overviewRadius || 62) * .65);
+      cam.lookAt(target.x, target.y, target.z);
+    }
   }
 
   const aiming = !!(hidden >= 0 && viewAiming);
@@ -500,11 +521,12 @@ function frame(tms) {
   // HUD
   let hint = '', progress = null;
   if (alive) {
-    const site = hello.map.sites.some(s => pred[0] >= s[0] && pred[0] <= s[2] && pred[2] >= s[1] && pred[2] <= s[3]);
+    const site = hello.map.sites.some((s, i) => pred[0] >= s[0] && pred[0] <= s[2] && pred[2] >= s[1] && pred[2] <= s[3]
+      && Math.abs(pred[1] - (hello.map.siteHeights?.[i] || 0)) < 1);
     if (me.pl > 0) progress = [me.pl, 'PLANTING'];
     else if (me.df > 0) progress = [me.df, me.kit ? 'DEFUSING (KIT)' : 'DEFUSING'];
     else if (me.bm && site && latest.ph === 1 && !latest.bomb) hint = me.sl === 6 ? 'Hold FIRE to plant the charge' : 'Press 5 to equip the charge';
-    else if (latest.bomb && roster.get(myId)?.tm === 2 && Math.hypot(latest.bomb[0] - pred[0], latest.bomb[2] - pred[2]) < 1.8) hint = 'Hold E to defuse';
+    else if (latest.bomb && roster.get(myId)?.tm === 2 && Math.hypot(latest.bomb[0] - pred[0], latest.bomb[1] - pred[1], latest.bomb[2] - pred[2]) < 1.8) hint = 'Hold E to defuse';
     else if (latest.ph === 0) hint = me.cb ? 'Buy time — press B' : '';
     if (hud.buyOpen && !me.cb) hud.toggleBuy(false);
     hud.renderBuy(me, roster.get(myId)?.tm || 1, { buySeconds: latest.buySeconds });

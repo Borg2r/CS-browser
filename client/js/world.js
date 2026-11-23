@@ -4,6 +4,7 @@ import { gunModel, handModel, weaponInfo, withOptic, weaponModelKey } from './mo
 import { playerModel } from './characters.js';
 import { buildDesert } from './desert.js';
 import { locationTexture, locationTint, lightLocation, buildLocation } from './locations.js';
+import { buildDust2 } from './dust2.js';
 
 const TIMBER_COLS = [0xb39770, 0x89775b, 0xb09b78, 0xb8a580, 0x9a8061, 0xc2a77b];
 
@@ -182,11 +183,26 @@ export class World {
     // Frame and light the whole playable town as its footprint changes.
     this.overviewRadius = Math.max(map.w, map.h) * 1.35;
     this.overviewHeight = Math.max(map.w, map.h) * 1.05;
+    this.overviewTarget = new THREE.Vector3();
     const shadowExtent = Math.max(map.w, map.h) * 1.35 + 8;
     Object.assign(this.sun.shadow.camera, {
       left: -shadowExtent, right: shadowExtent, top: shadowExtent, bottom: -shadowExtent,
     });
     this.sun.shadow.camera.updateProjectionMatrix();
+    if (theme === 'dust2') {
+      // The model includes its actual floors, walls and cover. Collision data
+      // is intentionally not rendered on top of the original textured mesh.
+      this.overviewTarget.set(-8, 0, -28);
+      this.overviewRadius = 108; this.overviewHeight = 84;
+      const group = this.mapGroup;
+      this.mapReady = buildDust2(group, () => this.mapGroup === group,
+        Math.min(8, this.renderer.capabilities.getMaxAnisotropy())).then(current => {
+        if (!current || this.mapGroup !== group) return false;
+        this.addSiteMarkers(map, group);
+        return true;
+      });
+      return this.mapReady;
+    }
     const mats = ['ground', 'wall', 'container', 'crate', 'barrier'];
     const tile = [5, 5, 3.4, 1.5, 2];
     const buf = mats.map(() => ({ p: [], n: [], u: [], c: [], i: [] }));
@@ -221,6 +237,14 @@ export class World {
       m.receiveShadow = true; m.castShadow = k !== 0;
       this.mapGroup.add(m);
     });
+    this.addSiteMarkers(map, this.mapGroup);
+    if (theme === 'desert') buildDesert(this.mapGroup, map);
+    else buildLocation(this.mapGroup, map);
+    this.mapReady = Promise.resolve(true);
+    return this.mapReady;
+  }
+
+  addSiteMarkers(map, group) {
     map.sites.forEach((s, k) => {
       const w = s[2] - s[0], d = s[3] - s[1];
       const tex = canvasTex(256, (g, sz) => {
@@ -229,11 +253,9 @@ export class World {
         g.fillText('AB'[k], sz / 2, sz / 2 + 6);
       }, false);
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
-      m.rotation.x = -Math.PI / 2; m.position.set((s[0] + s[2]) / 2, 0.02, (s[1] + s[3]) / 2);
-      this.mapGroup.add(m);
+      m.rotation.x = -Math.PI / 2; m.position.set((s[0] + s[2]) / 2, (map.siteHeights?.[k] || 0) + 0.02, (s[1] + s[3]) / 2);
+      group.add(m);
     });
-    if (theme === 'desert') buildDesert(this.mapGroup, map);
-    else buildLocation(this.mapGroup, map);
   }
 
   clearMap() {

@@ -14,10 +14,11 @@ pub enum MapId {
     Norheim = 2,
     Meridian = 3,
     NordDatacenter = 4,
+    Dust2 = 5,
 }
 
 impl MapId {
-    pub const ALL: [Self; 5] = [Self::Sirocco, Self::Dockyard, Self::Norheim, Self::Meridian, Self::NordDatacenter];
+    pub const ALL: [Self; 6] = [Self::Sirocco, Self::Dockyard, Self::Norheim, Self::Meridian, Self::NordDatacenter, Self::Dust2];
 
     pub const fn index(self) -> u32 { self as u32 }
 
@@ -34,6 +35,7 @@ impl MapId {
             Self::Sirocco => "sirocco", Self::Dockyard => "dockyard",
             Self::Norheim => "norheim", Self::Meridian => "meridian",
             Self::NordDatacenter => "nord_datacenter",
+            Self::Dust2 => "dust2",
         }
     }
 
@@ -42,6 +44,7 @@ impl MapId {
             Self::Sirocco => "Sirocco", Self::Dockyard => "Dockyard",
             Self::Norheim => "Norheim", Self::Meridian => "Meridian",
             Self::NordDatacenter => "NORD Datacenter",
+            Self::Dust2 => "Dust2",
         }
     }
 
@@ -50,6 +53,7 @@ impl MapId {
             Self::Sirocco => "desert", Self::Dockyard => "industrial",
             Self::Norheim => "office", Self::Meridian => "ship",
             Self::NordDatacenter => "datacenter",
+            Self::Dust2 => "dust2",
         }
     }
 
@@ -60,6 +64,7 @@ impl MapId {
             Self::Norheim => "A night shift through offices, meeting rooms and service corridors.",
             Self::Meridian => "A cargo ship with open deck routes, cargo stacks and a central superstructure.",
             Self::NordDatacenter => "Server halls, cooling equipment and service routes adapted from the NORD datacenter model.",
+            Self::Dust2 => "Classic desert streets, double doors and tunnels, with the original textured layout and elevation changes.",
         }
     }
 }
@@ -96,6 +101,8 @@ impl Zone {
 pub struct Map {
     pub id: MapId,
     pub boxes: Vec<Aabb>,
+    /// Imported surface geometry, shared by server collision and prediction.
+    pub mesh: Option<crate::mesh::CollisionMesh>,
     pub w: usize,
     pub h: usize,
     /// Site A, site B.
@@ -104,6 +111,8 @@ pub struct Map {
     pub spawns: [Vec<[f32; 2]>; 2],
     /// Team, then left/right courtyard exit. Used to face newly spawned players.
     spawn_exits: [[[f32; 2]; 2]; 2],
+    spawn_heights: [f32; 2],
+    site_heights: [f32; 2],
 }
 
 pub fn standard_tile(ch: u8) -> Option<(f32, u8)> {
@@ -218,11 +227,47 @@ impl Map {
         Map {
             id,
             spawn_exits,
+            spawn_heights: [0.0; 2],
+            site_heights: [0.0; 2],
+            mesh: None,
             boxes,
             w,
             h,
             sites: [zone(b'A'), zone(b'B')],
             spawns: [spawns(b'1'), spawns(b'2')],
+        }
+    }
+
+    /// Imported maps retain their authored floor surfaces instead of flattening
+    /// ramps, stairs and tunnels into tile columns.
+    pub fn from_mesh(
+        id: MapId, mesh: crate::mesh::CollisionMesh, extent: [usize; 2],
+        sites: [Zone; 2], site_heights: [f32; 2],
+        spawns: [Vec<[f32; 2]>; 2], spawn_heights: [f32; 2],
+        spawn_exits: [[[f32; 2]; 2]; 2],
+    ) -> Map {
+        Map { id, boxes: Vec::new(), mesh: Some(mesh), w: extent[0], h: extent[1],
+              sites, site_heights, spawns, spawn_heights, spawn_exits }
+    }
+
+    pub fn spawn_position(&self, team: usize, slot: usize) -> V3 {
+        let [x, z] = self.spawns[team][slot % self.spawns[team].len()];
+        let y = self.surface_height(x, z, self.spawn_heights[team]).unwrap_or(self.spawn_heights[team]);
+        [x, y + 0.01, z]
+    }
+
+    pub fn site_height(&self, index: usize) -> f32 { self.site_heights[index] }
+
+    /// Highest nearby floor, with limited upward reach to avoid selecting a
+    /// tunnel roof when the caller is on the level below it.
+    pub fn surface_height(&self, x: f32, z: f32, near_y: f32) -> Option<f32> {
+        if let Some(mesh) = &self.mesh {
+            mesh.floor_height(x, z, near_y, 0.5, 6.0)
+        } else {
+            self.boxes.iter().filter(|b| x >= b.min[0] && x <= b.max[0]
+                && z >= b.min[2] && z <= b.max[2] && b.max[1] <= near_y + 0.5
+                && b.max[1] >= near_y - 6.0)
+                .map(|b| b.max[1]).max_by(f32::total_cmp)
         }
     }
 
@@ -246,12 +291,14 @@ pub fn map_by_id(id: MapId) -> &'static Map {
     static NORHEIM: OnceLock<Map> = OnceLock::new();
     static MERIDIAN: OnceLock<Map> = OnceLock::new();
     static NORD_DATACENTER: OnceLock<Map> = OnceLock::new();
+    static DUST2: OnceLock<Map> = OnceLock::new();
     match id {
         MapId::Sirocco => SIROCCO.get_or_init(crate::maps::sirocco::build),
         MapId::Dockyard => DOCKYARD.get_or_init(crate::maps::dockyard::build),
         MapId::Norheim => NORHEIM.get_or_init(crate::maps::norheim::build),
         MapId::Meridian => MERIDIAN.get_or_init(crate::maps::meridian::build),
         MapId::NordDatacenter => NORD_DATACENTER.get_or_init(crate::maps::nord_datacenter::build),
+        MapId::Dust2 => DUST2.get_or_init(crate::maps::dust2::build),
     }
 }
 
@@ -264,10 +311,36 @@ mod tests {
     use std::collections::VecDeque;
 
     #[test]
-    fn all_spawns_and_both_sites_share_walkable_routes() {
+    fn flat_maps_have_one_connected_playable_floor() {
         for id in MapId::ALL {
+            // Layered imported maps also contain inaccessible rooftops and
+            // outside faces. Their playable routes are checked by the server's
+            // layered navigation tests, using actual player movement.
+            if map_by_id(id).mesh.is_some() { continue; }
             println!("checking walkable routes on {}", id.id());
             check_walkable_routes(map_by_id(id));
+        }
+    }
+
+    #[test]
+    fn imported_map_spawns_and_objectives_have_clear_supported_floors() {
+        for id in MapId::ALL {
+            let m = map_by_id(id);
+            let Some(mesh) = &m.mesh else { continue; };
+            for team in 0..2 {
+                assert!(m.spawns[team].len() >= 5 && m.spawns[team].len() % 5 != 0);
+                for slot in 0..m.spawns[team].len() {
+                    let p = m.spawn_position(team, slot);
+                    assert!(!collides(m, &p, H_STAND), "obstructed spawn {p:?}");
+                    assert!(mesh.floor_height(p[0], p[2], p[1], 0.0, 0.03).is_some(), "unsupported spawn {p:?}");
+                }
+            }
+            for (index, site) in m.sites.iter().enumerate() {
+                let c = site.center();
+                let p = [c[0], m.site_height(index) + 0.01, c[1]];
+                assert!(!collides(m, &p, H_STAND), "obstructed objective {p:?}");
+                assert!(mesh.floor_height(p[0], p[2], p[1], 0.0, 0.03).is_some(), "unsupported objective {p:?}");
+            }
         }
     }
 
@@ -310,6 +383,7 @@ mod tests {
     fn map_ids_are_stable_and_invalid_ids_do_not_fall_back() {
         assert_eq!(MapId::ALL.map(|id| (id.index(), id.id())), [
             (0, "sirocco"), (1, "dockyard"), (2, "norheim"), (3, "meridian"), (4, "nord_datacenter"),
+            (5, "dust2"),
         ], "wire and WASM indices are an append-only contract");
         for id in MapId::ALL {
             assert_eq!(MapId::from_index(id.index()), Some(id));
@@ -343,11 +417,19 @@ mod tests {
 
     fn check_spawn_facing(m: &Map) {
         for (team, spawns) in m.spawns.iter().enumerate() {
-            for &spawn in spawns {
+            for (slot, &spawn) in spawns.iter().enumerate() {
                 let direction = view_dir(m.spawn_yaw(team, spawn), 0.0);
+                let mut y = m.spawn_position(team, slot)[1];
                 for step in 1..=24 {
                     let distance = step as f32 * 0.5;
-                    let position = [spawn[0] + direction[0] * distance, 0.01, spawn[1] + direction[2] * distance];
+                    let x = spawn[0] + direction[0] * distance;
+                    let z = spawn[1] + direction[2] * distance;
+                    y = if let Some(mesh) = &m.mesh {
+                        mesh.standing_height(x, z, y, 0.5, 0.6, crate::physics::HALF_W, H_STAND)
+                    } else {
+                        m.surface_height(x, z, y)
+                    }.expect("spawn faces a drop") + 0.01;
+                    let position = [x, y, z];
                     assert!(!collides(&m, &position, H_STAND), "spawn {spawn:?} faces nearby obstruction at {position:?}");
                 }
             }
