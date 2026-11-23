@@ -4,6 +4,8 @@ import { Hud } from './hud.js';
 import { Sfx } from './audio.js';
 import { BotSettings } from './settings.js';
 import { withOptic } from './models.js';
+import { loadImportedWeapons } from './imported-weapons.js';
+import { loadCharacters } from './imported-characters.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('view');
@@ -50,15 +52,16 @@ $('sens').oninput = $('vol').oninput = $('name').onchange = applySettings; apply
 let wasm = null, predictedMap = null;
 let loadingError = '';
 let serverReady = false;
+let modelsReady = false, modelsError = '';
 let mapReady = false, mapLoadError = '', mapLoadVersion = 0;
 function updateReady() {
-  const ready = !!wasm && mapReady && predictedMap === hello?.map.id && serverReady && !!settings.state && ws?.readyState === WebSocket.OPEN;
+  const ready = !!wasm && mapReady && modelsReady && predictedMap === hello?.map.id && serverReady && !!settings.state && ws?.readyState === WebSocket.OPEN;
   for (const button of document.querySelectorAll('.teams button')) button.disabled = !ready;
-  $('status').textContent = loadingError || mapLoadError || (ready ? 'Connected — pick a side' : !wasm ? 'Loading game…' : hello && !mapReady ? `Loading ${hello.map.name}…` : 'Connecting to server…');
-  const loadingMap = !!hello && !mapReady;
+  $('status').textContent = loadingError || modelsError || mapLoadError || (ready ? 'Connected — pick a side' : !modelsReady ? 'Loading characters and weapons…' : !wasm ? 'Loading game…' : hello && !mapReady ? `Loading ${hello.map.name}…` : 'Connecting to server…');
+  const loadingMap = !modelsReady || (!!hello && !mapReady);
   $('map-loading').classList.toggle('hidden', !loadingMap);
-  $('map-loading-message').textContent = mapLoadError || (hello ? `Loading ${hello.map.name}…` : 'Loading map…');
-  $('map-loading-retry').classList.toggle('hidden', !mapLoadError);
+  $('map-loading-message').textContent = modelsError || mapLoadError || (!modelsReady ? 'Loading characters and weapons…' : hello ? `Loading ${hello.map.name}…` : 'Loading map…');
+  $('map-loading-retry').classList.toggle('hidden', !mapLoadError && !modelsError);
 }
 $('map-loading-retry').onclick = () => location.reload();
 function selectPredictionMap() {
@@ -108,6 +111,12 @@ async function loadPrediction() {
   updateReady();
 }
 loadPrediction();
+Promise.all([loadImportedWeapons(), loadCharacters()]).then(() => {
+  modelsReady = true; updateReady();
+}).catch(error => {
+  modelsError = 'Could not load characters and weapons. Reload to try again.';
+  console.error(error); updateReady();
+});
 
 $('invite').onclick = async () => {
   const link = new URL('.', location.href).href;
@@ -168,7 +177,7 @@ connect();
 for (const b of document.querySelectorAll('.teams button')) {
   b.onclick = () => {
     sfx.unlock(); applySettings();
-    if (!hello || !wasm || !mapReady || !serverReady) { updateReady(); return; }
+    if (!hello || !wasm || !mapReady || !modelsReady || !serverReady) { updateReady(); return; }
     send({ t: 'join', name: $('name').value.trim() || 'Player', team: +b.dataset.team, difficulty: settings.joinPreference, map: settings.joinMapPreference });
     captureMouse();
   };
@@ -380,7 +389,7 @@ document.addEventListener('keyup', e => {
 window.addEventListener('blur', () => { keys.clear(); mouseB = 0; if (hud.wheelOpen) hud.closeWheel(); });
 
 function buttons() {
-  if (!mapReady || !locked() || settings.open || chatOpen || hud.buyOpen) return 0;
+  if (!mapReady || !modelsReady || !locked() || settings.open || chatOpen || hud.buyOpen) return 0;
   const k = c => keys.has(c);
   let b = 0;
   if (k('KeyW') || k('ArrowUp')) b |= B.FWD;
@@ -418,13 +427,13 @@ function frame(tms) {
   const dt = round4(Math.max(0.001, Math.min(0.2, now - last))); last = now;
   const cam = world.camera;
 
-  if (!joined || !latest || !mapReady) {
+  if (!joined || !latest || !mapReady || !modelsReady) {
     const a = now * 0.06;
     const radius = world.overviewRadius || 62, height = world.overviewHeight || 46;
     const target = world.overviewTarget || { x: 0, y: 0, z: 0 };
     cam.position.set(target.x + Math.sin(a) * radius, target.y + height, target.z + Math.cos(a) * radius);
     cam.lookAt(target.x, target.y, target.z);
-    if (latest && hello && mapReady) drawRemote(now, dt, -1);
+    if (latest && hello && mapReady && modelsReady) drawRemote(now, dt, -1);
     aimBlend = 0;
     world.render(dt, { firstPerson: false, aim: 0 });
     return;

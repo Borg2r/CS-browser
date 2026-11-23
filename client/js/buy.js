@@ -30,6 +30,8 @@ const INFO = {
   kar98k:'Affordable bolt-action precision for long-range shots. Iron sights by default; accepts Red Dot or ACOG from Equipment.',
   m16:'Automatic rifle with a 30-round magazine. Hold left mouse to fire and right mouse to aim. Accepts Red Dot or ACOG from Equipment.',
   m14:'Semi-automatic only: one shot per left click. Powerful, accurate at range, with stronger recoil. Hold right mouse to aim; accepts Red Dot or ACOG.',
+  m4a4:'Automatic 30-round rifle. Hold right mouse to aim; accepts Red Dot or ACOG from Equipment.',
+  mp7:'Compact automatic SMG with a 40-round magazine. Hold right mouse to aim; accepts Red Dot or ACOG. Also available as Dual MP7.',
 };
 
 // Original lightweight illustrations: no image downloads or extra WebGL contexts.

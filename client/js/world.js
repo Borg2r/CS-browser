@@ -2,6 +2,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { gunModel, handModel, weaponInfo, withOptic, weaponModelKey } from './models.js';
 import { playerModel } from './characters.js';
+import { importedPlayerModel, updateImportedPlayer, disposeImportedPlayer } from './imported-characters.js';
 import { buildDesert } from './desert.js';
 import { locationTexture, locationTint, lightLocation, buildLocation } from './locations.js';
 import { buildDust2 } from './dust2.js';
@@ -262,7 +263,7 @@ export class World {
     if (this.mapGroup) {
       this.scene.remove(this.mapGroup); disposeMapGroup(this.mapGroup); this.mapGroup = null;
     }
-    for (const model of this.players.values()) this.scene.remove(model.root);
+    for (const model of this.players.values()) { this.scene.remove(model.root); disposeImportedPlayer(model); }
     this.players.clear();
     for (const store of [this.items, this.nades]) {
       for (const model of store.values()) this.scene.remove(model);
@@ -285,8 +286,8 @@ export class World {
     const w = weaponInfo(weapon);
     let m = this.players.get(id);
     if (!m || m.team !== s.team) {
-      if (m) this.scene.remove(m.root);
-      m = playerModel(s.team); m.team = s.team; this.players.set(id, m); this.scene.add(m.root);
+      if (m) { this.scene.remove(m.root); disposeImportedPlayer(m); }
+      m = importedPlayerModel(s.team, id) || playerModel(s.team); m.team = s.team; this.players.set(id, m); this.scene.add(m.root);
     }
     m.seen = true;
     m.root.visible = !hidden;
@@ -302,6 +303,7 @@ export class World {
       if (m.leftArmPistol) m.leftArmPistol.visible = compactGrip;
       if (m.leftArmDual) m.leftArmDual.visible = !!w.dual;
     }
+    if (m.imported) return updateImportedPlayer(m, s, w, dt, id);
     if (!s.alive) {
       // A newly observed corpse still needs its snapshot transform and loadout.
       // Forget its motion history so respawning does not create a false stride.
@@ -348,7 +350,7 @@ export class World {
   }
   sweepPlayers() {
     for (const [id, m] of this.players) {
-      if (!m.seen) { this.scene.remove(m.root); this.players.delete(id); }
+      if (!m.seen) { this.scene.remove(m.root); disposeImportedPlayer(m); this.players.delete(id); }
       m.seen = false;
     }
   }
@@ -435,15 +437,19 @@ export class World {
     this.handKick.fill(0); this.flashTimers.fill(0); this.handCycleAge.fill(Infinity);
     this.vmHands.forEach((hand, side) => {
       hand.clear(); hand.visible = side === 1 || !!w.dual;
-      const gun = gunModel(w); gun.name = 'weapon';
+      const gun = gunModel(w, 'view'); gun.name = 'weapon';
       hand.add(gun, handModel(side));
       if (side === 1 && !w.dual && w.cls >= 2 && w.cls <= 6) {
-        const support = handModel(0, true); support.position.set(-.025, .035, -.26); hand.add(support);
+        const support = handModel(0, true);
+        support.position.set(...(gun.userData.supportGrip || [-.025, .035, -.26]));
+        hand.add(support);
       }
       const muzzle = this.muzzles[side]; muzzle.position.set(...gun.userData.muzzle); muzzle.visible = false; hand.add(muzzle);
       hand.userData.sightY = gun.userData.sightY;
       hand.userData.dualHip = gun.userData.dualHip;
       hand.userData.hip = gun.userData.hip;
+      hand.userData.adsZ = gun.userData.adsZ;
+      hand.userData.viewRotation = gun.userData.viewRotation;
     });
   }
   kick(amount, hand = 1) {
@@ -495,8 +501,14 @@ export class World {
       hand.position.set(
         hipX * (1 - aim) + Math.cos(this.vmBob) * .006 * bob,
         THREE.MathUtils.lerp(hipY, -sightY, aim) - lower * .19 + Math.abs(Math.sin(this.vmBob)) * .008 * bob,
-        THREE.MathUtils.lerp(hip[2], -.26, aim) + kick * .055 + lower * .08);
+        THREE.MathUtils.lerp(hip[2], hand.userData.adsZ ?? -.26, aim) + kick * .055 + lower * .08);
       hand.rotation.set(kick * .13 - lower * .48, (dual ? sign * -.035 : .025) * (1 - aim), sign * (lower * .32 + reloadWave * .06));
+      const viewRotation = hand.userData.viewRotation;
+      if (viewRotation) {
+        hand.rotation.x += viewRotation[0] * (1 - aim);
+        hand.rotation.y += viewRotation[1] * (1 - aim);
+        hand.rotation.z += viewRotation[2] * (1 - aim);
+      }
       const gun = hand.getObjectByName('weapon');
       const slide = gun?.getObjectByName('slide');
       if (slide) slide.position.z = kick * .045;

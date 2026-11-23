@@ -126,7 +126,7 @@ pub const BOMB: usize = 4;
 pub const PISTOL_ATK: usize = 5;
 pub const PISTOL_DEF: usize = 6;
 
-pub static WEAPONS: [Weapon; 35] = [
+pub static WEAPONS: [Weapon; 37] = [
     with(gun("knife", "Combat Knife", C_KNIFE, 0, 0, 45.0, 0.45, 0, 0, 0.0, true, 0.0, 0.0, 0.85, 6.35), 1.0, 1500, 1, 0.0),
     gun("frag", "Frag Grenade", C_FRAG, 0, 300, 100.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.6, 6.2),
     gun("flash", "Flashbang", C_FLASH, 0, 200, 0.0, 0.8, 0, 0, 0.0, false, 0.0, 0.0, 0.0, 6.2),
@@ -136,33 +136,33 @@ pub static WEAPONS: [Weapon; 35] = [
     gun("kestrel", "P9S", C_PISTOL, 0, 200, 24.0, 0.13, 20, 120, 2.2, false, 0.010, 0.012, 0.50, 6.35),
     gun("bulwark", "Bulwark .45", C_PISTOL, 0, 200, 31.0, 0.15, 12, 96, 2.4, false, 0.010, 0.016, 0.50, 6.35),
     gun("viper", "Viper .357", C_PISTOL, 0, 600, 38.0, 0.17, 13, 52, 2.5, false, 0.009, 0.018, 0.65, 6.35),
-    gun("hornet", "Hornet AP", C_PISTOL, 0, 750, 22.0, 0.11, 20, 100, 2.6, false, 0.011, 0.010, 0.88, 6.35),
-    gun("mammoth", "Mammoth .50", C_PISTOL, 0, 700, 53.0, 0.28, 7, 35, 2.2, false, 0.008, 0.040, 0.80, 6.2),
+    gun("hornet", "Five-SeveN", C_PISTOL, 0, 750, 22.0, 0.11, 20, 100, 2.6, false, 0.011, 0.010, 0.88, 6.35),
+    gun("mammoth", "Desert Eagle", C_PISTOL, 0, 700, 53.0, 0.28, 7, 35, 2.2, false, 0.008, 0.040, 0.80, 6.2),
     // Shotguns
     with(gun("ram", "Ram 12", C_SHOTGUN, 0, 1700, 20.0, 0.88, 8, 32, 3.0, false, 0.055, 0.050, 0.50, 5.8), 0.70, 900, 8, 0.0),
     with(gun("tempest", "Tempest Auto", C_SHOTGUN, 0, 3000, 18.0, 0.26, 7, 32, 2.8, true, 0.060, 0.035, 0.50, 5.6), 0.70, 900, 6, 0.0),
     // SMGs
-    with(gun("wasp", "Wasp M10", C_SMG, 1, 1400, 24.0, 0.075, 30, 100, 2.6, true, 0.022, 0.006, 0.50, 6.2), 0.88, 600, 1, 0.0),
+    with(gun("wasp", "MAC-10", C_SMG, 1, 1400, 24.0, 0.075, 30, 100, 2.6, true, 0.022, 0.006, 0.50, 6.2), 0.88, 600, 1, 0.0),
     with(gun("cricket", "QK-9mm", C_SMG, 2, 1250, 20.0, 0.070, 30, 120, 2.1, true, 0.016, 0.005, 0.50, 6.2), 0.88, 600, 1, 0.0),
-    with(gun("lynx", "Lynx 5", C_SMG, 0, 1500, 26.0, 0.080, 30, 120, 2.6, true, 0.012, 0.006, 0.55, 6.1), 0.90, 600, 1, 0.0),
+    with(gun("lynx", "MP5-SD", C_SMG, 0, 1500, 26.0, 0.080, 30, 120, 2.6, true, 0.012, 0.006, 0.55, 6.1), 0.90, 600, 1, 0.0),
     with(gun("cinder", "Cinder 45", C_SMG, 0, 1700, 30.0, 0.100, 25, 100, 3.0, true, 0.013, 0.007, 0.55, 6.1), 0.88, 600, 1, 0.0),
     with(gun("volt", "Volt 90", C_SMG, 0, 2350, 24.0, 0.070, 50, 100, 3.2, true, 0.014, 0.005, 0.65, 6.0), 0.90, 300, 1, 0.0),
     // Rifles
-    gun("jackal", "Jackal AR", C_RIFLE, 1, 2000, 30.0, 0.090, 35, 90, 2.6, true, 0.009, 0.008, 0.75, 5.8),
-    gun("falcon", "Falcon AR", C_RIFLE, 2, 2250, 30.0, 0.090, 25, 90, 3.0, true, 0.008, 0.007, 0.70, 5.8),
-    gun("rook", "Rook 762", C_RIFLE, 1, 2500, 36.0, 0.100, 30, 90, 2.5, true, 0.007, 0.011, 0.78, 5.6),
-    gun("sentinel", "Sentinel 556", C_RIFLE, 2, 3100, 32.0, 0.088, 30, 90, 3.0, true, 0.005, 0.008, 0.70, 5.8),
+    gun("jackal", "Galil AR", C_RIFLE, 1, 2000, 30.0, 0.090, 35, 90, 2.6, true, 0.009, 0.008, 0.75, 5.8),
+    gun("falcon", "FAMAS", C_RIFLE, 2, 2250, 30.0, 0.090, 25, 90, 3.0, true, 0.008, 0.007, 0.70, 5.8),
+    gun("rook", "AK-47", C_RIFLE, 1, 2500, 36.0, 0.100, 30, 90, 2.5, true, 0.007, 0.011, 0.78, 5.6),
+    gun("sentinel", "M4A1", C_RIFLE, 2, 3100, 32.0, 0.088, 30, 90, 3.0, true, 0.005, 0.008, 0.70, 5.8),
     with(gun("sabre", "Sabre SG", C_RIFLE, 1, 3500, 33.0, 0.090, 30, 90, 3.0, true, 0.005, 0.009, 0.80, 5.6), 0.96, 300, 1, 2.0),
     with(gun("bastion", "Bastion BP", C_RIFLE, 2, 3500, 32.0, 0.085, 30, 90, 3.2, true, 0.005, 0.008, 0.80, 5.6), 0.96, 300, 1, 2.0),
     // Snipers
     with(gun("drifter", "Drifter LR", C_SNIPER, 0, 2750, 75.0, 1.25, 10, 60, 2.0, false, 0.001, 0.0, 0.85, 6.5), 0.99, 300, 1, 4.0),
-    with(gun("longbow", "Longbow .338", C_SNIPER, 0, 4750, 115.0, 1.45, 10, 30, 3.0, false, 0.0005, 0.0, 0.95, 5.3), 0.99, 100, 1, 5.0),
-    with(gun("reaper", "Reaper DMR", C_SNIPER, 0, 5000, 70.0, 0.25, 20, 60, 3.4, false, 0.001, 0.012, 0.90, 5.3), 0.99, 300, 1, 4.0),
+    with(gun("longbow", "AWP", C_SNIPER, 0, 4750, 115.0, 1.45, 10, 30, 3.0, false, 0.0005, 0.0, 0.95, 5.3), 0.99, 100, 1, 5.0),
+    with(gun("reaper", "G3SG1", C_SNIPER, 0, 5000, 70.0, 0.25, 20, 60, 3.4, false, 0.001, 0.012, 0.90, 5.3), 0.99, 300, 1, 4.0),
     // Machine gun
-    gun("anvil", "Anvil LMG", C_LMG, 0, 5750, 32.0, 0.080, 100, 200, 4.7, true, 0.011, 0.007, 0.75, 5.6),
+    gun("anvil", "Negev", C_LMG, 0, 5750, 32.0, 0.080, 100, 200, 4.7, true, 0.011, 0.007, 0.75, 5.6),
     // Akimbo: mag is the combined capacity; mouse buttons fire each hand.
-    akimbo(gun("twin_kestrel", "Twin Kestrels", C_PISTOL, 0, 500, 22.0, 0.16, 30, 120, 2.9, false, 0.016, 0.014, 0.50, 6.2)),
-    akimbo(gun("twin_mammoth", "Twin Mammoths", C_PISTOL, 0, 750, 46.0, 0.34, 14, 56, 3.3, false, 0.014, 0.035, 0.75, 6.0)),
+    akimbo(gun("twin_kestrel", "Dual Elites", C_PISTOL, 0, 500, 22.0, 0.16, 30, 120, 2.9, false, 0.016, 0.014, 0.50, 6.2)),
+    akimbo(gun("twin_mammoth", "Dual Desert Eagles", C_PISTOL, 0, 750, 46.0, 0.34, 14, 56, 3.3, false, 0.014, 0.035, 0.75, 6.0)),
     // Dual primaries: keep these appended so existing weapon indices stay stable.
     akimbo(with(gun("twin_mp7", "Dual MP7", C_SMG, 0, 2600, 18.0, 0.075, 80, 240, 3.6, true, 0.024, 0.008, 0.52, 5.9), 0.87, 600, 1, 0.0)),
     akimbo(with(gun("twin_lever", "Twin Lever-Action", C_SHOTGUN, 0, 2400, 17.0, 0.85, 10, 40, 4.0, false, 0.065, 0.055, 0.50, 5.65), 0.68, 900, 7, 0.0)),
@@ -170,6 +170,9 @@ pub static WEAPONS: [Weapon; 35] = [
     bolt_action(with(gun("kar98k", "Kar98k", C_RIFLE, 0, 1500, 74.0, 1.8, 5, 35, 3.8, false, 0.0003, 0.045, 0.85, 5.5), 0.995, 300, 1, 1.35)),
     with(gun("m16", "M16", C_RIFLE, 0, 2800, 31.0, 0.09, 30, 90, 2.8, true, 0.0045, 0.0085, 0.72, 5.75), 0.96, 300, 1, 1.35),
     with(gun("m14", "M14", C_RIFLE, 0, 2900, 57.0, 0.24, 20, 80, 3.0, false, 0.0013, 0.025, 0.85, 5.55), 0.985, 300, 1, 1.35),
+    // Distinct uploaded weapons append to preserve existing network indices.
+    gun("m4a4", "M4A4", C_RIFLE, 0, 3100, 32.0, 0.09, 30, 90, 3.0, true, 0.005, 0.008, 0.70, 5.8),
+    with(gun("mp7", "MP7", C_SMG, 0, 1900, 23.0, 0.075, 40, 120, 2.7, true, 0.014, 0.006, 0.55, 6.1), 0.89, 600, 1, 0.0),
 ];
 
 pub fn by_id(id: &str) -> Option<usize> {

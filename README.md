@@ -1,6 +1,6 @@
 # Breachpoint
 
-An original round-based tactical team shooter that runs in the browser, with
+A round-based tactical team shooter that runs in the browser, with
 online multiplayer and bots. Attackers try to plant a demolition charge on one
 of two sites; defenders stop them or defuse it.
 
@@ -9,8 +9,8 @@ of two sites; defenders stop them or defuse it.
 - **Shared simulation** – `crates/sim`: map, collision, movement and the weapon
   table. Used natively by the server and compiled to WebAssembly
   (`crates/predict`) so the client predicts movement with the exact same code.
-- **Client** – plain ES modules + three.js (vendored). All textures, models and
-  sounds are generated procedurally; there are no art or audio assets.
+- **Client** – plain ES modules + three.js (vendored). Uploaded textured maps,
+  weapons and characters are served locally alongside procedural models and audio.
 
 ## Run
 
@@ -78,17 +78,17 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   teams and bot difficulty. Other players see the active map and join it.
 - Spawn courtyards block direct and wall-penetrating shots from opposing spawns,
   including jumping sightlines. Bots can reach both objectives on every map.
-- Detailed procedural weapons and operators, articulated equipment, warm desert
-  lighting, and architectural scenery. All assets are served with the game.
-- Operators have shaped plate carriers, stitched uniforms, magazine pouches,
-  belt equipment, fitted boots and detailed headgear. Tan attackers wear wrapped
-  cloth and goggles; navy defenders have helmets, headsets and face coverings.
-  Weapon grips adapt to rifles, pistols and akimbo pairs, with moving heads and
-  a crouched pose that bends the knees and keeps boots on the ground.
+- Fifteen uploaded weapon models with original textures, normal maps and
+  material detail, plus procedural models for the remaining weapons. M4A4 and
+  single MP7 are separate shop choices; the uploaded MP7 also serves the dual pair.
+- Eight original textured CS 1.6 operators rotate across the teams: Arctic,
+  Terror, Leet and Guerilla attackers; Urban, GIGN, SAS and GSG9 defenders.
+  Added skeletons provide walking, aiming, crouching and death poses. Weapon
+  grips adapt to rifles, pistols and akimbo pairs. See [IMPORTED_MODELS.md](IMPORTED_MODELS.md).
 - 30 rounds: sides swap at half-time after 15, first team to 16 wins.
 - Fixed spray patterns, bullet penetration through thin cover, fall damage,
   slow-down when hit, hold-to-aim iron sights and optics, knife slash / stab / backstab.
-- 30 firearms (pistols, four akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
+- 32 firearms (pistols, four akimbo pairs, shotguns, SMGs, rifles, scoped rifles, snipers, LMG),
   knife, frag / flash / smoke grenades, armour, helmet and defuse kit.
 - Economy with kill rewards and round win / loss bonuses. The CS-inspired buy
   menu has six categories, weapon illustrations, prices and statistics, a budget
@@ -109,7 +109,7 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   can fast-forward the bots to their actual result and the next round; scoring,
   side swaps and match completion follow the normal rules.
 - Weapon drops and pick-ups, spectating while dead, radar, scoreboard, chat.
-- Four akimbo options: **Twin Kestrels** and **Twin Mammoths** under Pistols;
+- Four akimbo options: **Dual Elites** and **Dual Desert Eagles** under Pistols;
   **Dual MP7** under SMGs ($2,600, 40 rounds per hand); and **Twin Lever-Action**
   under Heavy ($2,400, 5 shells per hand). The new pairs occupy the primary slot,
   leaving room for a sidearm. Hold either mouse button for automatic MP7 fire;

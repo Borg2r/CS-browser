@@ -39,7 +39,7 @@ async fn main() {
     let app = Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/ws", get(ws_handler))
-        .fallback_service(ServeDir::new(dir))
+        .fallback_service(ServeDir::new(dir).precompressed_gzip())
         .with_state(App { tx, next_conn: Arc::new(AtomicU32::new(1)) });
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await.expect("bind");

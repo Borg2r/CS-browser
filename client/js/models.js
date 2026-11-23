@@ -5,6 +5,7 @@ import { buildTitan } from './titan.js';
 import { buildKar98k } from './kar98k.js';
 import { buildM16 } from './m16.js';
 import { buildM14 } from './m14.js';
+import { cloneImportedWeapon, importedWeaponReady } from './imported-weapons.js';
 
 const bevelShape = new THREE.Shape();
 bevelShape.moveTo(-.46, -.46); bevelShape.lineTo(.46, -.46); bevelShape.lineTo(.46, .46); bevelShape.lineTo(-.46, .46); bevelShape.closePath();
@@ -90,7 +91,7 @@ export function withOptic(weapon, optic = weapon?.optic || 0, definitions) {
 }
 export function weaponModelKey(weapon) {
   const w = weaponInfo(weapon);
-  return `${w.id}/${w.cls}/${w.optic || 0}/${w.zoom || 0}`;
+  return `${w.id}/${w.cls}/${w.optic || 0}/${w.zoom || 0}${importedWeaponReady(w.id) ? '/imported' : ''}`;
 }
 
 // Etched screw slots and machining lines are baked into their receiver batch.
@@ -480,8 +481,22 @@ function equipment(w) {
   const g = p.build(); g.userData = { muzzle:[0,0,-.3], sightY:.1, length:.3 }; return g;
 }
 
-export function gunModel(weapon) {
-  const w = withOptic(weapon), key = weaponModelKey(w);
+export function gunModel(weapon, detail = 'world') {
+  const w = withOptic(weapon), baseKey = weaponModelKey(w);
+  const key = importedWeaponReady(w.id) ? `${baseKey}/${detail}` : baseKey;
+  if (!templates.has(key)) {
+    const imported = cloneImportedWeapon(w, detail);
+    if (imported) {
+      if (w.optic && !w.dual) {
+        const mount = imported.userData.optic || {};
+        const base = mount.baseY ?? imported.userData.sightY - .025;
+        const sightY = w.optic === 1 ? mount.redDotY ?? base + .065 : mount.acogY ?? base + .080;
+        imported.add(opticModel(w.optic, sightY, mount.z ?? -.10, w.cls === 1, base));
+        imported.userData.sightY = sightY;
+      }
+      templates.set(key, imported);
+    }
+  }
   if (!templates.has(key)) templates.set(key, w.id === 'm16' ? buildM16(w, { Parts, MAT, mat, screw, opticModel, marking }) : w.id === 'm14' ? buildM14(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, marking }) : w.id === 'kar98k' ? buildKar98k(w, { Parts, MAT, mat, walnutFinish, screw, opticModel, marking }) : w.id === 'titan' ? buildTitan(w, { Parts, MAT, mat, rails, marking }) : w.id === 'twin_mp7' ? mp7(w) : w.id === 'twin_lever' ? leverShotgun(w) : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
   return templates.get(key).clone(true);
 }

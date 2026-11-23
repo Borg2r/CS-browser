@@ -2364,9 +2364,10 @@ mod tests {
     }
 
     #[test]
-    fn m16_and_m14_buy_for_both_teams_and_publish_distinct_firing_modes() {
-        for (id, index, price, magazine, reserve, automatic) in [
-            ("m16", 33, 2800, 30, 90, true), ("m14", 34, 2900, 20, 80, false),
+    fn appended_weapons_buy_for_both_teams_and_publish_distinct_firing_modes() {
+        for (id, index, price, magazine, reserve, automatic, class) in [
+            ("m16", 33, 2800, 30, 90, true, C_RIFLE), ("m14", 34, 2900, 20, 80, false, C_RIFLE),
+            ("m4a4", 35, 3100, 30, 90, true, C_RIFLE), ("mp7", 36, 1900, 40, 120, true, C_SMG),
         ] {
             assert_eq!(by_id(id), Some(index), "new rifles append without changing existing indices");
             for team in [ATK, DEF] {
@@ -2389,7 +2390,7 @@ mod tests {
                 assert_eq!((gun.w, gun.ammo, gun.reserve, gun.optic), (index, magazine, reserve, 0));
                 let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
                 let def = &hello["weapons"][index];
-                assert_eq!(def["id"], id); assert_eq!(def["cls"], C_RIFLE);
+                assert_eq!(def["id"], id); assert_eq!(def["cls"], class);
                 assert_eq!(def["slot"], 0); assert_eq!(def["team"], 0);
                 assert_eq!(def["auto"], automatic); assert_eq!(def["ads"], true);
                 assert_eq!(def["boltAction"], false); assert_eq!(def["dual"], false);
@@ -3188,7 +3189,7 @@ mod tests {
         let mut g = weapon_game("twin_kestrel");
         let hello: serde_json::Value = serde_json::from_str(&g.hello()).unwrap();
         let definitions = hello["weapons"].as_array().unwrap();
-        assert_eq!(definitions.len(), 35);
+        assert_eq!(definitions.len(), WEAPONS.len());
         for (id, class, capacity, pellets, automatic) in [("twin_mp7", C_SMG, 80, 1, true), ("twin_lever", C_SHOTGUN, 10, 7, false)] {
             let def = definitions.iter().find(|w| w["id"] == id).unwrap();
             assert_eq!(def["cls"], class); assert_eq!(def["slot"], 0); assert_eq!(def["team"], 0);
