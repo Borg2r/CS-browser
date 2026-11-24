@@ -115,8 +115,21 @@ export class Sfx {
     this.tone(o, { freq: high ? 2600 : 1900, dur: 0.07, vol: 0.5, type: 'square' });
   }
   hit(hs) {
-    const o = this.out(null, 0.35); if (!o) return;
-    this.tone(o, { freq: hs ? 1700 : 1100, dur: 0.06, vol: 0.6, type: 'triangle' });
+    // A shotgun can confirm several head pellets in one server event packet.
+    // Play one dink for that packet, without delaying the next confirmed shot.
+    if (hs && this.headshotQueued) return;
+    const o = this.out(null, hs ? 0.48 : 0.35); if (!o) return;
+    if (hs) {
+      this.headshotQueued = true;
+      queueMicrotask(() => { this.headshotQueued = false; });
+      // Sharp impact followed by inharmonic metal resonances, not a UI beep.
+      this.burst(o, { dur: 0.012, freq: 3800, type: 'highpass', vol: 0.22 });
+      this.tone(o, { freq: 2150, dur: 0.18, vol: 0.72 });
+      this.tone(o, { freq: 3470, dur: 0.11, vol: 0.32 });
+      this.tone(o, { freq: 5210, dur: 0.065, vol: 0.14 });
+    } else {
+      this.tone(o, { freq: 1100, dur: 0.06, vol: 0.6, type: 'triangle' });
+    }
   }
   hurt() {
     const o = this.out(null, 0.5); if (!o) return;
