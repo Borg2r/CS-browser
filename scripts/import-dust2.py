@@ -142,6 +142,19 @@ def convert(source, destination):
         'materials': gltf['materials'],
         'textures': textures,
     }
+    # Keep the reviewed visual upgrade when rebuilding the unchanged source
+    # mesh. Original PNGs are still extracted above for attribution/recovery.
+    upgrade_path = destination / 'texture-upgrade.json'
+    if upgrade_path.exists():
+        upgrade = json.loads(upgrade_path.read_text())
+        assert upgrade['version'] == 1 and upgrade['sourceSha256'] == manifest['source']['sha256'], 'Texture upgrade belongs to another source'
+        for index, texture in upgrade['textures'].items():
+            index = int(index)
+            original = destination / textures[index]['uri']
+            assert hashlib.sha256(original.read_bytes()).hexdigest() == texture['originalSha256'], 'Unexpected original texture'
+            assert (destination / texture['uri']).is_file(), 'Missing restored texture'
+            textures[index]['uri'] = texture['uri']
+        manifest['textureUpgrade'] = {'version': 1, 'manifest': 'texture-upgrade.json', 'count': len(upgrade['textures'])}
     (destination / 'geometry.bin').write_bytes(data)
     (destination / 'scene.json').write_text(json.dumps(manifest, separators=(',', ':')) + '\n')
     print(f'{len(batches)} batches, {triangle_count} triangles, {len(textures)} original textures; bounds {bounds}')

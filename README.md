@@ -68,9 +68,10 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   annex and outdoor cooling/generator yard. The footprint is enlarged for
   readable routes and combat, with a single playable ground level. See
   [NORD_MAP.md](NORD_MAP.md) for the source-to-game mapping.
-  **Dust2** uses the uploaded classic map's original mesh and all 34 textures,
-  including tunnels, ramps, stairs and both bomb sites. Native and WASM physics
-  share the same triangle collision; bots navigate connected floor levels.
+  **Dust2** uses the uploaded classic map's original mesh, including tunnels,
+  ramps, stairs and both bomb sites. Thirty textures have restored detail at
+  higher resolution. Native and WASM physics share the same triangle collision;
+  bots navigate connected floor levels.
   See [DUST2_MAP.md](DUST2_MAP.md) for provenance and rebuilding the assets.
   **Compound**, **Province**, **Italy**, **Assault**, and **Office** use the five
   uploaded maps: their industrial yards, Mediterranean streets, warehouse and

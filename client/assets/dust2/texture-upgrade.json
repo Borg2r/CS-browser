@@ -1,0 +1,313 @@
+{
+  "version": 1,
+  "sourceSha256": "92da5929670931087cebbb7493eceedfd38f38af9f5e85cf1761e90ff39f5960",
+  "method": "AI-assisted restoration of original diffuse textures; 2\u20134x resolution, capped at 512px; WebP quality 92",
+  "textures": {
+    "1": {
+      "uri": "textures/hd/01.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "59e8cfad2c1fada2b0343b34af4627184d26d3bc9f2f530b6a9e9dbd2372ece6"
+    },
+    "2": {
+      "uri": "textures/hd/02.webp",
+      "width": 512,
+      "height": 256,
+      "originalSize": [
+        256,
+        128
+      ],
+      "originalSha256": "93c5549d1f5fcd6ab3d71e81b6c659cde021c84adc781a66056cea1ce6a210df"
+    },
+    "29": {
+      "uri": "textures/hd/29.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        256,
+        256
+      ],
+      "originalSha256": "30cf4f89ccbad13def29d752ae9379185f979195f64339f5b7bf5ab4c68c95cc"
+    },
+    "3": {
+      "uri": "textures/hd/03.webp",
+      "width": 256,
+      "height": 512,
+      "originalSize": [
+        128,
+        256
+      ],
+      "originalSha256": "b2a9bd86e2af16726f8896327ed0a3325f4ef53a1032c555e06894c46acf4614"
+    },
+    "15": {
+      "uri": "textures/hd/15.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "2ac53d6a0db499b073f2bef0719950d909210258381a977596f9a9129330e337"
+    },
+    "0": {
+      "uri": "textures/hd/00.webp",
+      "width": 256,
+      "height": 128,
+      "originalSize": [
+        64,
+        32
+      ],
+      "originalSha256": "52cbd628889814cfdc1e29e79bd0a8848ef4e138db5fcfd11850305010409042"
+    },
+    "4": {
+      "uri": "textures/hd/04.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "07ed5a9f0a7c2e706116f0a7a38ad4a3243cb7b4d016997193afeedf2d5a8514"
+    },
+    "9": {
+      "uri": "textures/hd/09.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "07150470ddb71f54ebaacf13388a0f8f9a279739de7afa85e7b097fa0d1ca301"
+    },
+    "12": {
+      "uri": "textures/hd/12.webp",
+      "width": 256,
+      "height": 256,
+      "originalSize": [
+        64,
+        64
+      ],
+      "originalSha256": "ed55caa5b682987d79f66e7695c8810b8afba54179b4fdd4173f6374f7630b76"
+    },
+    "33": {
+      "uri": "textures/hd/33.webp",
+      "width": 256,
+      "height": 256,
+      "originalSize": [
+        64,
+        64
+      ],
+      "originalSha256": "dfd79b86ea68bfbdf1b2c57dcbe232034b6889d4a77431674e521e5078d33f53"
+    },
+    "13": {
+      "uri": "textures/hd/13.webp",
+      "width": 256,
+      "height": 256,
+      "originalSize": [
+        64,
+        64
+      ],
+      "originalSha256": "ab9b750a92d7b4fbc84f8a438e274dfbdf8145545678767ac16cd85de81bfd3b"
+    },
+    "14": {
+      "uri": "textures/hd/14.webp",
+      "width": 256,
+      "height": 256,
+      "originalSize": [
+        64,
+        64
+      ],
+      "originalSha256": "f18398a3bfa1bab01a17a1faf36a66bff271d7eef9dbc966f21d90504821a118"
+    },
+    "16": {
+      "uri": "textures/hd/16.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "d3216148f3f7778440e20ea435385f1c62f5f96f515d962650d9afae31fd0e28"
+    },
+    "19": {
+      "uri": "textures/hd/19.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "5226f8cea58bf144ce92aaf66d9b0f02f78ea30aabad439b4a032f4009712c03"
+    },
+    "21": {
+      "uri": "textures/hd/21.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "1f258a0887bcd1dfabd7d3629e133e259c39e7da3443845f9e37b13282a5d99d"
+    },
+    "22": {
+      "uri": "textures/hd/22.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "3d55a71836b4bcc69d5cbd2dccbde30864f75ce04ea65f0c4455b1df61cc0309"
+    },
+    "24": {
+      "uri": "textures/hd/24.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "fa4b8dc1716ac05e461a610ccd7b7da8ba7a31335efcc9c5f101156e3b714a7b"
+    },
+    "31": {
+      "uri": "textures/hd/31.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "772a32435bc4a74a2ee5c88d424f18aa8faa6e18b22b97f0f24a35e86f661374"
+    },
+    "5": {
+      "uri": "textures/hd/05.webp",
+      "width": 512,
+      "height": 128,
+      "originalSize": [
+        256,
+        64
+      ],
+      "originalSha256": "a77dc6514d2105a62e3ddfc889314a953ed95ed4cb189694c4f94333a1945dc8"
+    },
+    "6": {
+      "uri": "textures/hd/06.webp",
+      "width": 512,
+      "height": 128,
+      "originalSize": [
+        256,
+        64
+      ],
+      "originalSha256": "8ce9607016b2a5cee948cd18a4e45edfbc71ead3aea79cb6981fb12d36539199"
+    },
+    "7": {
+      "uri": "textures/hd/07.webp",
+      "width": 512,
+      "height": 256,
+      "originalSize": [
+        256,
+        128
+      ],
+      "originalSha256": "ec2c2078f2f0e33588e2163fa92f44652854e3666b12e5acd9da6ef24a28c282"
+    },
+    "8": {
+      "uri": "textures/hd/08.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "fd4eab0c4bee71f676b69c1f9299220c607cd892f527f7b02b9cd233f4a6ae14"
+    },
+    "20": {
+      "uri": "textures/hd/20.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "14ba99dc488e6b6d023d0f499783ceba8d366019c9b9f5972cd0bb148fc4078e"
+    },
+    "32": {
+      "uri": "textures/hd/32.webp",
+      "width": 512,
+      "height": 256,
+      "originalSize": [
+        256,
+        128
+      ],
+      "originalSha256": "fbdd3802a72340fef705e0f3f86a420284ed44c00b1422dfe61b3dd17f712d06"
+    },
+    "18": {
+      "uri": "textures/hd/18.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        256,
+        256
+      ],
+      "originalSha256": "b6e2677d7b850f5b32424cfe41290547d0d8d855f1bb2ebc8359222069ad9b25"
+    },
+    "25": {
+      "uri": "textures/hd/25.webp",
+      "width": 256,
+      "height": 256,
+      "originalSize": [
+        64,
+        64
+      ],
+      "originalSha256": "2fc10c1739fe9bc3d1b740eb5319f1b6a364c3747a94d817cb02a7ed8cc66bba"
+    },
+    "26": {
+      "uri": "textures/hd/26.webp",
+      "width": 256,
+      "height": 256,
+      "originalSize": [
+        64,
+        64
+      ],
+      "originalSha256": "78e712536df8712d8f8a0c892cd5c131ce3f5fbade746c0a8348549707da0d36"
+    },
+    "27": {
+      "uri": "textures/hd/27.webp",
+      "width": 64,
+      "height": 256,
+      "originalSize": [
+        16,
+        64
+      ],
+      "originalSha256": "f4d0322c0c0b020ba89003253a378a6af4361916977c9ae48da36439a8813362"
+    },
+    "28": {
+      "uri": "textures/hd/28.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "77bc6a7bfb29466afe22c089bee2cc57aed2754a624ef65a164b7b977bf0b540"
+    },
+    "30": {
+      "uri": "textures/hd/30.webp",
+      "width": 512,
+      "height": 512,
+      "originalSize": [
+        128,
+        128
+      ],
+      "originalSha256": "7a640e181b977500fc4c0809038afd3fa7df3797e284d1eacb91a764c8c063dc"
+    }
+  },
+  "unchangedTextures": [
+    10,
+    11,
+    17,
+    23
+  ]
+}

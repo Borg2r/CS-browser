@@ -201,7 +201,7 @@ export class World {
       }
       const group = this.mapGroup;
       this.mapReady = buildImportedMap(group, map, () => this.mapGroup === group,
-        Math.min(8, this.renderer.capabilities.getMaxAnisotropy())).then(manifest => {
+        Math.min(map.id === 'dust2' ? 16 : 8, this.renderer.capabilities.getMaxAnisotropy())).then(manifest => {
         if (!manifest || this.mapGroup !== group) return false;
         if (manifest.overview) {
           if (manifest.overview.target) this.overviewTarget.fromArray(manifest.overview.target);
