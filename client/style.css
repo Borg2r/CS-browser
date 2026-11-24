@@ -140,7 +140,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #e5c38a; outline
 #hitmarker { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; opacity: 0;
   background: linear-gradient(45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%), linear-gradient(-45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%); }
 #hitmarker.hs { filter: drop-shadow(0 0 3px #f33) sepia(1) saturate(8) hue-rotate(-30deg); }
-#optic-dot { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #ff4439; box-shadow: 0 0 4px #ff4c3b99; }
+#optic-dot { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; border-radius: 50%; background: #ff4439; box-shadow: 0 0 3px #ff4c3b88; }
 #scope { --scope-radius: min(38vh, 46vw); position: absolute; inset: 0; background: radial-gradient(circle at center, transparent calc(var(--scope-radius) - 2px), #07090b var(--scope-radius)); }
 .scope-reticle { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(var(--scope-radius) * 2); height: calc(var(--scope-radius) * 2); }
 #scope .scope-acog { display: none; }

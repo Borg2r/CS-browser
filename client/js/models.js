@@ -9,7 +9,8 @@ import { buildDrifter } from './drifter.js';
 import { buildDetailedPistol } from './detailed-pistols.js';
 import { buildDetailedTactical } from './detailed-tactical.js';
 import { buildDetailedShotgun } from './detailed-shotguns.js';
-import { hollowTube } from './weapon-detail.js';
+import { buildOptic, opticAxisHeight } from './optics.js';
+import { buildSabre } from './sabre.js';
 import { cloneImportedWeapon, importedWeaponReady } from './imported-weapons.js';
 
 const bevelShape = new THREE.Shape();
@@ -109,49 +110,43 @@ function lathe(p, center, length, radius, count = 8) {
 }
 
 function opticModel(type, y, z = -.10, pistolMount = false, mountBase) {
-  const p = new Parts(), g = new THREE.Group(); g.name = type === 1 ? 'red_dot' : 'acog';
-  const body = mat(0x273238, .48, .33), edge = mat(0x76817d, .55, .36);
-  const base = mountBase ?? (pistolMount ? .088 : .08);
-  p.box(body, .052, .012, type === 1 ? .07 : .13, 0, base + .006, z);
-  p.box(edge, .038, Math.max(.008,y - base - .035), .027, 0, (base + y - .027) / 2, z);
-  for (const side of [-1,1]) {
-    p.box(body,.012,.015,.025,side*.026,base+.008,z+.016);
-    screw(p,side*.033,base+.01,z+.016,.004);
+  return buildOptic(type, y, z, pistolMount, mountBase, { Parts, MAT, mat, screw });
+}
+
+// Fixed front/rear iron sights need modest, real rail risers on a few guns.
+// Raise the mounting adapter, never enlarge the optic or distort its housing.
+const opticClearance = {
+  wasp: .125, lynx: .124, mp7: .089, m4a4: .134,
+  ram: .133, tempest: .142, kar98k: [.117, .146], m14: .151, anvil: .130,
+};
+function mountedOptic(weapon, type, y, z = -.10, pistolMount = false, mountBase) {
+  const base = mountBase ?? (weapon.id === 'kar98k' ? .089 : pistolMount ? .088 : .08);
+  const clearance = opticClearance[weapon.id] || 0;
+  const rise = Math.max(0, (Array.isArray(clearance) ? clearance[type - 1] : clearance) - opticAxisHeight(type, pistolMount, base));
+  const optic = opticModel(type, y, z, pistolMount, base + rise);
+  if (rise > .0001) {
+    const p = new Parts(), steel = mat(0x303638, .55, .44);
+    const depth = type === 1 ? .044 : .066;
+    if (rise > .010) {
+      for (const side of [-1, 1]) p.box(steel, .005, rise, depth, side * .012, base + rise / 2, z);
+      p.box(steel, .029, .003, depth, 0, base + .0015, z);
+      p.box(steel, .029, .003, depth, 0, base + rise - .0015, z);
+    } else p.box(steel, .029, rise, depth, 0, base + rise / 2, z);
+    optic.add(p.build('optic_riser'));
   }
-  if (type === 1) {
-    // Open tube: rings and side struts never paint over the sight picture.
-    for (const dz of [-.021,.021]) p.add('ring',body,[.030,.030,.020],[0,y,z+dz]);
-    for (const side of [-1,1]) p.box(body,.008,.024,.046,side*.030,y,z);
-    p.box(body,.037,.007,.047,0,y+.030,z);
-    p.add('cylinder',body,[.010,.012,.010],[.039,y,z],[0,0,Math.PI/2]);
-    p.box(edge,.008,.003,.013,.046,y,z);
-    p.box(body,.018,.012,.028,0,y-.033,z+.004);
-    p.box(mat(0xb44a35,.12,.5),.006,.002,.012,0,y+.034,z-.005);
-  } else {
-    // Compact prism body, large objective bell and fiber-optic light collector.
-    p.add(hollowTube(.028,.024,.134,28),body,[1,1,1],[0,y,z-.015]);
-    for (const dz of [-.091,.065]) p.add('ring',body,[.034,.034,.027],[0,y,z+dz]);
-    p.box(body,.065,.039,.077,0,y-.023,z-.012);
-    p.box(edge,.008,.008,.065,-.034,y-.016,z-.01);
-    p.add('cylinder',body,[.015,.014,.015],[0,y+.036,z-.005]);
-    p.add('cylinder',body,[.012,.015,.012],[.036,y,z+.005],[0,0,Math.PI/2]);
-    for (let i=0;i<4;i++) p.box(edge,.003,.011,.002,.045,y-.004,z-.002+i*.004);
-    p.box(body,.015,.009,.099,0,y+.035,z-.024);
-    p.box(mat(0xa43125,.1,.3),.006,.005,.09,0,y+.041,z-.024);
-    p.box(MAT.black,.012,.006,.032,0,y+.042,z+.007);
-  }
-  g.add(p.build());
-  const lensZ = z + (type === 1 ? .020 : .065);
-  const lens = new THREE.Mesh(new THREE.CircleGeometry(type === 1 ? .026 : .029,32),new THREE.MeshBasicMaterial({color:0x76c6c2,transparent:true,opacity:type===1?.07:.3,depthWrite:false,side:THREE.DoubleSide,toneMapped:false}));
-  lens.name='optic_lens';lens.position.set(0,y,lensZ);g.add(lens);
-  if (type === 1) {
-    const dot = new THREE.Group();dot.name='optic_reticle';dot.position.set(0,y,lensZ+.001);dot.visible=false;
-    for (const [r,opacity] of [[.0018,.25],[.0008,1]]) {
-      const disc=new THREE.Mesh(new THREE.CircleGeometry(r,16),new THREE.MeshBasicMaterial({color:0xff291b,transparent:true,opacity,depthWrite:false,depthTest:false,toneMapped:false}));disc.renderOrder=20;dot.add(disc);
-    }
-    g.add(dot);
-  }
-  return g;
+  optic.userData.railY = base;
+  optic.userData.riserHeight = rise;
+  return optic;
+}
+
+function alignOptic(model) {
+  const lens = model.getObjectByName('optic_lens');
+  if (!lens) return model;
+  model.updateMatrixWorld(true);
+  // A pistol optic may be inside its moving slide; other optics attach at
+  // the root. Derive both from the actual optical centre.
+  model.userData.sightY = model.worldToLocal(lens.getWorldPosition(new THREE.Vector3())).y;
+  return model;
 }
 
 function ironSights(p, frontZ, rearZ, y, frontBase = .078) {
@@ -394,24 +389,26 @@ export function gunModel(weapon, detail = 'world') {
         const mount = imported.userData.optic || {};
         const base = mount.baseY ?? imported.userData.sightY - .025;
         const sightY = w.optic === 1 ? mount.redDotY ?? base + .065 : mount.acogY ?? base + .080;
-        imported.add(opticModel(w.optic, sightY, mount.z ?? -.10, w.cls === 1, base));
+        const carrier = w.cls === 1 ? imported.getObjectByName('slide') || imported : imported;
+        carrier.add(mountedOptic(w, w.optic, sightY, mount.z ?? -.10, w.cls === 1, base));
+        imported.userData.slideMountedOptic = carrier !== imported;
         imported.userData.sightY = sightY;
       }
-      templates.set(key, imported);
+      templates.set(key, alignOptic(imported));
     }
   }
   if (!templates.has(key)) {
-    const api = { Parts, MAT, mat, screw, opticModel, marking, rails };
+    const api = { Parts, MAT, mat, screw, opticModel: (...args) => mountedOptic(w, ...args), marking, rails };
     const builders = {
       kestrel: buildDetailedPistol, bulwark: buildDetailedPistol, viper: buildDetailedPistol,
       cricket: buildDetailedTactical, cinder: buildDetailedTactical, volt: buildDetailedTactical,
-      sabre: buildDetailedTactical, bastion: buildDetailedTactical,
+      sabre: buildSabre, bastion: buildDetailedTactical,
       ram: buildDetailedShotgun, tempest: buildDetailedShotgun, twin_lever: buildDetailedShotgun,
       m16: buildM16, m14: buildM14, kar98k: buildKar98k, titan: buildTitan, drifter: buildDrifter,
     };
     const builder = builders[w.id];
-    templates.set(key, builder ? builder(w, api) : w.id === 'twin_mp7' ? mp7(w)
-      : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w));
+    templates.set(key, alignOptic(builder ? builder(w, api) : w.id === 'twin_mp7' ? mp7(w)
+      : w.cls === 1 ? pistol(w) : w.cls >= 2 && w.cls <= 6 ? longGun(w) : equipment(w)));
   }
   return templates.get(key).clone(true);
 }

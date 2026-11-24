@@ -264,66 +264,6 @@ function volt(w,api) {
   return model;
 }
 
-function sabre(w,api) {
-  const {Parts,MAT,screw,rails,marking}=api;
-  const body=new Parts(), action=new Parts(), magazine=new Parts();
-  const olive=finish('polymer',0x747b54), dark=finish('polymer',0x323c37);
-  const steel=finish('blued',0x4e595c), edge=finish('steel',0x8b9491);
-  // Pressed steel upper and a separate trigger housing, with a visible action.
-  const outline=[[-.327,.013],[-.327,.066],[-.302,.085],[.088,.085],[.112,.055],[.108,.004],[-.075,-.017],[-.248,-.017]];
-  for(const side of [-1,1])panel(body,steel,outline,.007,.002,
-    side===1?[[[-.238,.027],[-.092,.027],[-.092,.065],[-.238,.065]]]:[],[side*.032,0,0]);
-  body.box(steel,.059,.012,.397,0,.082,-.105);
-  body.box(dark,.058,.028,.3,0,-.013,-.082);
-  panel(body,steel,[[-.223,-.009],[-.206,-.05],[-.096,-.054],[-.073,-.02]],.068,.002);
-  grip(body,olive,dark);guard(body,steel,.027);
-  // Two fitted handguard shells with through ventilation slots and a continuous
-  // underside curve rather than rail blocks filling the barrel enclosure.
-  const handguard=[[-.606,.016],[-.591,.071],[-.328,.079],[-.311,.05],[-.321,-.027],[-.568,-.027],[-.601,-.012]];
-  const vents=[];
-  for(let i=0;i<6;i++) {
-    const z=-.563+i*.038;
-    vents.push([[z,.029],[z+.024,.029],[z+.024,.053],[z,.053]]);
-  }
-  panel(body,olive,handguard,.078,.004,vents);
-  body.box(dark,.081,.003,.24,0,-.017,-.455);
-  for(const side of [-1,1]) {
-    for(let i=0;i<5;i++)body.box(dark,.002,.022,.003,side*.042,-.002,-.542+i*.043);
-    screw(body,side*.043,.004,-.585,.004);
-    screw(body,side*.043,.007,-.33,.004);
-  }
-  // Long skeletonized folding stock with a separate comb and rubber butt.
-  body.add('cylinder',steel,[.016,.081,.016],[0,.026,.121]);
-  panel(body,olive,[[.133,.066],[.397,.047],[.422,.024],[.416,-.117],[.382,-.124],
-    [.148,-.036],[.131,-.02]],.045,.004,[[[.172,.032],[.375,.013],[.378,-.078],[.173,-.009]]]);
-  panel(body,dark,[[.395,.04],[.425,.023],[.424,-.115],[.4,-.129]],.068,.003);
-  body.box(olive,.059,.022,.171,0,.055,.277,-.035);
-  for(let i=0;i<6;i++)body.box(steel,.068,.003,.004,0,-.108+i*.023,.427);
-  body.box(steel,.011,.027,.023,.036,.022,.127);
-  // Curved thirty-round magazine and the locking lugs molded into its sides.
-  curvedMag(magazine,dark,steel,-.154,.049,.249,.058);
-  for(const side of [-1,1]) {
-    for(let i=0;i<3;i++)magazine.box(olive,.003,.025,.013,side*.029,-.091-i*.043,-.159+i*.012);
-    magazine.box(steel,.01,.021,.018,side*.033,-.072,-.127);
-  }
-  action.box(edge,.05,.03,.13,0,.046,-.166);
-  action.box(steel,.064,.013,.018,.039,.048,-.112);
-  action.add('cylinder',dark,[.009,.027,.009],[.075,.043,-.112],[0,0,P/2]);
-  controls(body,steel,edge,screw,.039,.049);
-  for(const side of [-1,1])for(const z of [-.284,-.066,.084])screw(body,side*.039,.001,z,.004);
-  shaft(body,steel,[[-.827,.013],[-.799,.014],[-.772,.014],[-.754,.018],[-.599,.018],[-.58,.023]],.049);
-  body.tube(steel,.012,.285,0,.087,-.472);
-  body.box(steel,.05,.068,.04,0,.064,-.61);
-  muzzle(body,steel,dark,.049,-.843,.018,.0045);
-  rails(body,.301,-.105,.105,.054);
-  const model=new THREE.Group();
-  const sightY=attach(w,model,body,api,{iron:.151,front:-.61,rear:.037,base:.114,native:true,mountZ:-.113});
-  marking({...w,name:'SABRE SG  •  5.56'},body,.0365,.044,-.037,.118);
-  model.add(body.build(),magazine.build('magazine'),action.build('slide'));
-  model.userData={muzzle:[0,.049,-.87],sightY,length:1.30,hip:[.205,-.174,-.66],supportGrip:[-.025,.005,-.434],authoredDetail:true};
-  return model;
-}
-
 function bastion(w,api) {
   const {Parts,MAT,screw,rails,marking}=api;
   const body=new Parts(), action=new Parts(), magazine=new Parts();
@@ -388,7 +328,6 @@ export function buildDetailedTactical(w,api) {
     case 'cricket': return qk9(w,api);
     case 'cinder': return cinder(w,api);
     case 'volt': return volt(w,api);
-    case 'sabre': return sabre(w,api);
     case 'bastion': return bastion(w,api);
     default: throw new Error(`No detailed tactical model: ${w.id}`);
   }

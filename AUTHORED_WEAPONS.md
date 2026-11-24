@@ -7,7 +7,8 @@ Weapon IDs, prices, ammunition, damage and firing modes are unchanged.
 | Builder | Weapons |
 | --- | --- |
 | `client/js/detailed-pistols.js` | P9S, Bulwark .45, Viper .357 |
-| `client/js/detailed-tactical.js` | QK-9mm, Cinder 45, Volt 90, Sabre SG, Bastion BP |
+| `client/js/detailed-tactical.js` | QK-9mm, Cinder 45, Volt 90, Bastion BP |
+| `client/js/sabre.js` | Sabre SG, with rounded Swiss-style receiver/furniture and a curved translucent magazine |
 | `client/js/detailed-shotguns.js` | Ram 12, Tempest Auto, Twin Lever-Action (short M1887) |
 | `client/js/drifter.js`, `titan.js`, `kar98k.js` | Drifter LR, Titan .50, Kar98k |
 | `client/js/m16.js`, `m14.js` | M16, M14 |
@@ -30,7 +31,13 @@ creating a draw call for every screw, cartridge or panel.
 Source geometry uses metres with the muzzle facing negative Z and the gripping
 hand around `(0, -.08, .03)`. Profiles take `[z, y]` coordinates and an X width;
 barrels are centered on their own Z axis. The shared `Parts.add` helper places
-these shapes into the baked model. Base models use roughly 5,400–13,600 triangles.
+these shapes into the baked model. Most base models use roughly 5,400–13,600
+triangles. Sabre's more detailed body uses about 21,400 before its optic.
+
+`weapon-lighting.js` creates one small filtered reflection environment per
+renderer for the first-person scene. Low-intensity, broad reflections reveal
+curved metal and coated glass without capturing the scene every frame or
+downloading an HDR image. Map lighting is independent.
 
 ## Animation and sights
 
@@ -52,3 +59,12 @@ clear optical axis. Akimbo M1887s have no ADS. When editing a builder, inspect
 both hip and ADS views, attachments, firing/reload animation, the world model,
 and both hands for dual weapons. Check finite geometry/UVs, outward normals,
 open bores, independent clone transforms and alignment of the sight picture.
+
+`optics.js` supplies compact open-emitter reflex sights (separate pistol/rifle
+sizes) and a 155 mm forged prism sight with a curved fiber collector. The
+optics expose their real lens height relative to the mounting base. `models.js`
+derives ADS height from the actual lens, including optics attached inside a
+pistol's moving slide. A few weapons need small rail adapters to clear their
+fixed iron sights; those adapters lift the mount without scaling the optic.
+The native Sabre sight retains its existing 2× magnification and has a fine
+in-model chevron. Purchased ACOG retains the 4× HUD scope; red dots retain 1.5×.

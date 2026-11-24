@@ -6,6 +6,7 @@ import { importedPlayerModel, updateImportedPlayer, disposeImportedPlayer } from
 import { buildDesert } from './desert.js';
 import { locationTexture, locationTint, lightLocation, buildLocation } from './locations.js';
 import { buildImportedMap, importedMapURL, cancelPendingImportedMap } from './imported-maps.js';
+import { weaponEnvironment } from './weapon-lighting.js';
 
 const TIMBER_COLS = [0xb39770, 0x89775b, 0xb09b78, 0xb8a580, 0x9a8061, 0xc2a77b];
 
@@ -130,6 +131,9 @@ export class World {
 
     // First-person weapon is drawn in its own pass so it never clips into walls.
     this.vmScene = new THREE.Scene();
+    this.weaponEnvironment = weaponEnvironment(this.renderer);
+    this.vmScene.environment = this.weaponEnvironment.texture;
+    this.vmScene.environmentIntensity = .28;
     this.vmScene.add(new THREE.HemisphereLight(0xf2f7ff, 0x6c6049, 2.2));
     const vmKey = new THREE.DirectionalLight(0xffefd0, 3.4); vmKey.position.set(-2, 3, 2); this.vmScene.add(vmKey);
     const vmRim = new THREE.DirectionalLight(0xc3e4f0, 1.6); vmRim.position.set(3, 1, -2); this.vmScene.add(vmRim);
@@ -558,6 +562,8 @@ export class World {
       }
       const reticle = gun?.getObjectByName('optic_reticle');
       if (reticle) reticle.visible = this.vmWeapon.optic === 1 && aim > .2 && aim < .85 && !view.scoped;
+      const nativeReticle = gun?.getObjectByName('native_reticle');
+      if (nativeReticle) nativeReticle.visible = !this.vmWeapon.optic && aim > .2 && !view.scoped;
       const magazine = gun?.getObjectByName('magazine');
       if (magazine) {
         const direction = gun.userData.magazineReloadDirection || [0, -1, 0];

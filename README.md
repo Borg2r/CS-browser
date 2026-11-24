@@ -135,7 +135,10 @@ refresh `client/predict.wasm`. Tests: `cargo test`.
   SMGs, rifles and machine guns accept either. Akimbo weapons and fixed-scope
   snipers cannot mount these attachments. Optics stay on their individual gun
   when switching slots, surviving a round, dropping it or picking it up. Buying
-  a different optic replaces the existing one at full price.
+  a different optic replaces the existing one at full price. Compact open
+  reflex sights use low mounts, while the ACOG has a shaped prism body and
+  fiber-optic collector. Sabre SG has a rounded Swiss-style model and a native
+  2× prism with an illuminated chevron.
 - **Titan .50:** a slow bolt-action sniper in Rifles ($6,200), with a 12× scope,
   five-round magazine, 2.3 seconds between shots and a 4.8-second reload. Direct
   center-body damage is 110 within 20 m, decreases smoothly to 94 at 50 m and
